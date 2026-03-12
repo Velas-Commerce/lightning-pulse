@@ -78,3 +78,25 @@ export type NetworkMetrics = {
   median_node_degree: number;
   last_computed: string;
 };
+
+export type MonthlyVolumeEntry = {
+  date: string;
+  volume_usd: number;
+  transactions: number;
+};
+
+export type LightningGrowthStats = {
+  sources: string[];
+  avg_transaction_usd: number;
+  num_lightning_users: number;
+  monthly_volume: MonthlyVolumeEntry[];
+};
+
+export type LiquidityVelocity = {
+  velocity: number;
+  monthly_volume_usd: number;
+  volume_date: number;
+  capacity_sats: number;
+  capacity_usd: number;
+  btc_price_usd: number;
+};

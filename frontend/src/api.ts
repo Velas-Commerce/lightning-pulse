@@ -34,3 +34,13 @@ export async function fetchNetworkMetrics() {
   const res = await fetch(`${BASE_URL}/node/network-metrics`);
   return res.json();
 }
+
+export async function fetchGrowthStats() {
+  const res = await fetch(`${BASE_URL}/lightning/growth-stats`);
+  return res.json();
+}
+
+export async function fetchVelocityStats() {
+  const res = await fetch(`${BASE_URL}/lightning/velocity`);
+  return res.json();
+}
