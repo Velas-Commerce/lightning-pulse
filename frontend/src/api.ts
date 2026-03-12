@@ -26,6 +26,11 @@ export async function fetchOldestNodes() {
 }
 
 export async function fetchGraphInfo() {
-  const res = await fetch(`${BASE_URL}//node/graph-info`);
+  const res = await fetch(`${BASE_URL}/node/graph-info`);
+  return res.json();
+}
+
+export async function fetchNetworkMetrics() {
+  const res = await fetch(`${BASE_URL}/node/network-metrics`);
   return res.json();
 }

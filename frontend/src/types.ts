@@ -56,16 +56,25 @@ export type OldestNodes = {
 };
 
 export type GraphInfo = {
-    graph_diameter: number;
-    avg_out_degree: number;
-    max_out_degree: number;
-    num_nodes: number;
-    num_channels: number;
-    total_network_capacity: string;
-    avg_channel_size: number;
-    min_channel_size: number;
-    max_channel_size: string;
-    median_channel_size_sat: string;
-    num_zombie_chans: string;
+  graph_diameter: number;
+  avg_out_degree: number;
+  max_out_degree: number;
+  num_nodes: number;
+  num_channels: number;
+  total_network_capacity: string;
+  avg_channel_size: number;
+  min_channel_size: number;
+  max_channel_size: string;
+  median_channel_size_sat: string;
+  num_zombie_chans: string;
 };
 
+export type NetworkMetrics = {
+  pulse_score: number;
+  gini_coefficient: number;
+  top10_centralization: number;
+  top100_centralization: number;
+  median_fee_rate: number;
+  median_node_degree: number;
+  last_computed: string;
+};

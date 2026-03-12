@@ -5,6 +5,8 @@ import MarketData from "./components/MarketData";
 import LightningStats from "./components/LightningStats";
 import NodesPerCountryList from "./components/NodesPerCountryList";
 import OldestNodesList from "./components/OldestNodesList";
+import GraphInfoList from "./components/GraphInfoList";
+import NetworkMetricsList from "./components/NetworkMetricsList";
 
 function App() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
@@ -22,7 +24,9 @@ function App() {
         </p>
       )}
       <MarketData />
+      <NetworkMetricsList />
       <LightningStats />
+      <GraphInfoList />
       <NodesPerCountryList />
       <OldestNodesList />
     </div>
