@@ -4,7 +4,7 @@ import { fetchHealth } from "./api";
 import MarketData from "./components/MarketData";
 import LightningStats from "./components/LightningStats";
 import NodesPerCountryList from "./components/NodesPerCountryList";
-import OldestNodesList from "./components/OldestNodesList";
+import LargestNodesList from "./components/LargestNodesList";
 import GraphInfoList from "./components/GraphInfoList";
 import NetworkMetricsList from "./components/NetworkMetricsList";
 import GrowthStats from "./components/GrowthStats";
@@ -32,7 +32,7 @@ function App() {
       <LightningStats />
       <GraphInfoList />
       <NodesPerCountryList />
-      <OldestNodesList />
+      <LargestNodesList />
     </div>
   );
 }

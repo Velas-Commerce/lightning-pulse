@@ -32,7 +32,7 @@ class NodesPerCountry(BaseModel):
     capacity: str | None
 
 
-class OldestNodes(BaseModel):
+class LargestNode(BaseModel):
     publicKey: str
     alias: str
     channels: int

@@ -1,5 +1,5 @@
 import httpx
-from models import LightningStatsResponse, NodesPerCountry, OldestNodes, BtcPrice
+from models import LightningStatsResponse, NodesPerCountry, LargestNode, BtcPrice
 
 # curl -sSL "https://mempool.space/api/v1/lightning/statistics/latest"
 # curl -sSL "https://mempool.space/api/v1/lightning/nodes/rankings/age"
@@ -22,9 +22,9 @@ async def get_nodes_per_country() -> list[NodesPerCountry]:
         return response.json()
 
 
-async def get_oldest_nodes() -> list[OldestNodes]:
+async def get_largest_nodes() -> list[LargestNode]:
     async with httpx.AsyncClient() as client:
-        response = await client.get(MEMPOOL_BASE_URL + "lightning/nodes/rankings/age")
+        response = await client.get(MEMPOOL_BASE_URL + "lightning/nodes/rankings/liquidity")
         response.raise_for_status()
         return response.json()
     

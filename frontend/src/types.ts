@@ -44,7 +44,7 @@ export type NodesPerCountry = {
   capacity: string | null;
 };
 
-export type OldestNodes = {
+export type LargestNode = {
   publicKey: string;
   alias: string;
   channels: number;

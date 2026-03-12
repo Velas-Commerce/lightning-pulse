@@ -20,8 +20,8 @@ export async function fetchNodesPerCountry() {
   return res.json();
 }
 
-export async function fetchOldestNodes() {
-  const res = await fetch(`${BASE_URL}/lightning/oldest-nodes`);
+export async function fetchLargestNodes() {
+  const res = await fetch(`${BASE_URL}/lightning/largest-nodes`);
   return res.json();
 }
 

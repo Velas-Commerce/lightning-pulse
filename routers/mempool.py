@@ -1,6 +1,6 @@
 from fastapi import APIRouter
-from services.mempool import get_lightning_stats, get_nodes_per_country, get_oldest_nodes, get_btc_price
-from models import LightningStatsResponse, NodesPerCountry, OldestNodes, BtcPrice
+from services.mempool import get_lightning_stats, get_nodes_per_country, get_largest_nodes, get_btc_price
+from models import LightningStatsResponse, NodesPerCountry, LargestNode, BtcPrice
 
 
 router = APIRouter()
@@ -16,9 +16,9 @@ async def nodes_per_country():
     return await get_nodes_per_country()
 
 
-@router.get("/lightning/oldest-nodes", response_model=list[OldestNodes])
-async def oldest_nodes():
-    return await get_oldest_nodes()
+@router.get("/lightning/largest-nodes", response_model=list[LargestNode])
+async def largest_nodes():
+    return await get_largest_nodes()
 
 
 @router.get("/btc-price", response_model=BtcPrice)
