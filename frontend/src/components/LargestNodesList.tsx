@@ -10,13 +10,14 @@ function LargestNodesList() {
   }, []);
 
   return (
-    <div>
+    <div className="card">
       <h2>Largest Lightning Nodes</h2>
       {largest_nodes && (
         <ul>
-          {largest_nodes.map((node) => (
+          {largest_nodes.slice(0, 20).map((node) => (
             <li key={node.publicKey}>
-              {node.alias} — {node.capacity.toLocaleString()} sats ({node.channels} channels)
+              <span className="label">{node.alias || node.publicKey.slice(0, 12) + "…"}</span>
+              <span className="val">{node.capacity.toLocaleString()} sats · {node.channels} ch</span>
             </li>
           ))}
         </ul>

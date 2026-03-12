@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
+import "./App.css";
 import type { HealthStatus } from "./types";
 import { fetchHealth } from "./api";
-import MarketData from "./components/MarketData";
 import LightningStats from "./components/LightningStats";
 import NodesPerCountryList from "./components/NodesPerCountryList";
 import LargestNodesList from "./components/LargestNodesList";
@@ -19,20 +19,23 @@ function App() {
 
   return (
     <div>
-      <h1>Lightning Pulse</h1>
-      {health && (
-        <p>
-          API status: {health.status} - metrics ready: {String(health.metrics_ready)}
-        </p>
-      )}
-      <MarketData />
-      <GrowthStats />
-      <VelocityStats />
-      <NetworkMetricsList />
-      <LightningStats />
-      <GraphInfoList />
-      <NodesPerCountryList />
-      <LargestNodesList />
+      <header className="dashboard-header">
+        <h1>⚡ Lightning Pulse</h1>
+        {health && (
+          <p className="api-status">
+            API {health.status} · metrics {health.metrics_ready ? "ready" : "loading"}
+          </p>
+        )}
+      </header>
+      <div className="dashboard-grid">
+        <GrowthStats />
+        <VelocityStats />
+        <NetworkMetricsList />
+        <LightningStats />
+        <GraphInfoList />
+        <NodesPerCountryList />
+        <LargestNodesList />
+      </div>
     </div>
   );
 }

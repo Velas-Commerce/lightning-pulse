@@ -10,17 +10,17 @@ function NetworkMetricsList() {
   }, []);
 
   return (
-    <div>
+    <div className="card">
       <h2>Network Metrics</h2>
       {network_metrics && (
         <>
-          <p>Pulse Score: {network_metrics.pulse_score.toLocaleString()}</p>
-          <p>Gini Coefficient: {network_metrics.gini_coefficient.toLocaleString()}</p>
-          <p>Top 10 Centralization: {network_metrics.top10_centralization.toLocaleString()}</p>
-          <p>Top 100 Centralization: {network_metrics.top100_centralization.toLocaleString()}</p>
-          <p>Median Fee Rate: {network_metrics.median_fee_rate.toLocaleString()}</p>
-          <p>Median Node Degree: {network_metrics.median_node_degree.toLocaleString()}</p>
-          <p>Last Computed: {network_metrics.last_computed.toLocaleString()}</p>
+          <p><span>Pulse Score</span><span className="val">{network_metrics.pulse_score.toLocaleString()}</span></p>
+          <p><span>Gini Coefficient</span><span className="val">{network_metrics.gini_coefficient.toLocaleString()}</span></p>
+          <p><span>Top 10 Centralization</span><span className="val">{network_metrics.top10_centralization.toLocaleString()}</span></p>
+          <p><span>Top 100 Centralization</span><span className="val">{network_metrics.top100_centralization.toLocaleString()}</span></p>
+          <p><span>Median Fee Rate</span><span className="val">{network_metrics.median_fee_rate.toLocaleString()} ppm</span></p>
+          <p><span>Median Node Degree</span><span className="val">{network_metrics.median_node_degree.toLocaleString()}</span></p>
+          <p><span>Last Computed</span><span className="val">{network_metrics.last_computed}</span></p>
         </>
       )}
     </div>

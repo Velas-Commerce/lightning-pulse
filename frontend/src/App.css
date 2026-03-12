@@ -1,42 +1,226 @@
 #root {
-  max-width: 1280px;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 0 1.5rem 3rem;
+}
+
+/* ── HEADER ── */
+.dashboard-header {
   text-align: center;
+  padding: 3rem 1rem 0;
+  position: relative;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.dashboard-header::after {
+  content: '';
+  display: block;
+  width: 100%;
+  height: 1px;
+  margin-top: 1.75rem;
+  background: linear-gradient(90deg, transparent, var(--crimson) 25%, var(--amber) 50%, var(--crimson) 75%, transparent);
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.dashboard-header h1 {
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 900;
+  color: var(--lightning);
+  text-shadow:
+    0 0 20px var(--lightning-glow),
+    0 0 60px rgba(245, 196, 0, 0.2);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0 0 0.5rem;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.api-status {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin: 0;
 }
 
+/* ── GRID ── */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.25rem;
+  margin-top: 2rem;
+}
+
+/* ── CARD ── */
 .card {
-  padding: 2em;
+  background: var(--bg-card);
+  border: 1px solid var(--separator);
+  border-top: 2px solid var(--crimson);
+  border-radius: 6px;
+  padding: 1.5rem;
+  position: relative;
+  overflow: hidden;
+  animation: fadeUp 0.5s ease both;
+  transition: box-shadow 0.25s, border-top-color 0.25s;
 }
 
-.read-the-docs {
-  color: #888;
+.card::before {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--amber), transparent);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.card:hover {
+  box-shadow: 0 0 30px var(--crimson-glow), 0 4px 24px rgba(0, 0, 0, 0.5);
+  border-top-color: var(--amber);
+}
+
+.card:hover::before {
+  opacity: 0.6;
+}
+
+.card:nth-child(1) { animation-delay: 0.00s; }
+.card:nth-child(2) { animation-delay: 0.06s; }
+.card:nth-child(3) { animation-delay: 0.12s; }
+.card:nth-child(4) { animation-delay: 0.18s; }
+.card:nth-child(5) { animation-delay: 0.24s; }
+.card:nth-child(6) { animation-delay: 0.30s; }
+.card:nth-child(7) { animation-delay: 0.36s; }
+.card:nth-child(8) { animation-delay: 0.42s; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── CARD INTERNALS ── */
+.card h2 {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin: 0 0 1.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--separator);
+}
+
+.card p {
+  margin: 0;
+  padding: 0.5rem 0;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--separator);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.card p:last-child {
+  border-bottom: none;
+}
+
+.card p .val {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ── LISTS ── */
+.card ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card li {
+  padding: 0.45rem 0;
+  font-size: 0.83rem;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--separator);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.card li:last-child {
+  border-bottom: none;
+}
+
+.card li .val {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.card li .label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── SECTION HEADERS (h2 used as a non-card header within a card) ── */
+.card .section-label {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--crimson);
+  margin: 1.25rem 0 0.5rem;
+}
+
+/* ── SOURCES LIST ── */
+.card .sources li {
+  justify-content: flex-start;
+  gap: 0.5rem;
+}
+
+.card .sources li::before {
+  content: '↗';
+  color: var(--amber);
+  flex-shrink: 0;
+  font-size: 0.75rem;
+}
+
+/* ── MAP CARD ── */
+.map-card {
+  grid-column: 1 / -1;
+}
+
+.map-wrapper {
+  position: relative;
+  margin-top: 0.5rem;
+  background: #0d0505;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.map-tooltip {
+  pointer-events: none;
+  z-index: 100;
+  background: #1e0c08;
+  border: 1px solid var(--amber);
+  border-radius: 4px;
+  padding: 0.35rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+}
+
+.map-tooltip-name {
+  font-size: 0.78rem;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.map-tooltip-count {
+  font-size: 0.7rem;
+  color: var(--amber);
+  font-variant-numeric: tabular-nums;
 }

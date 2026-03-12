@@ -45,9 +45,10 @@ db.sqlite3
 media/
 staticfiles/
 
-# VS Code and JetBrains IDEs
+# VS Code, JetBrains, and Claude Code
 .vscode/
 .idea/
+.claude/
 
 # macOS and Windows system files
 .DS_Store

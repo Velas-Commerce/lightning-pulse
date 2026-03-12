@@ -10,13 +10,16 @@ function GraphInfoList() {
   }, []);
 
   return (
-    <div>
+    <div className="card">
       <h2>Graph Info</h2>
       {graph_info && (
         <>
-        <p>Graph Diameter: {graph_info.graph_diameter.toLocaleString()}</p>
-        <p>Average Channel Size: {Math.round(graph_info.avg_channel_size).toLocaleString()} SATS</p>
-      </>
+          <p><span>Nodes</span><span className="val">{graph_info.num_nodes.toLocaleString()}</span></p>
+          <p><span>Channels</span><span className="val">{graph_info.num_channels.toLocaleString()}</span></p>
+          <p><span>Graph Diameter</span><span className="val">{graph_info.graph_diameter.toLocaleString()}</span></p>
+          <p><span>Avg Channel Size</span><span className="val">{Math.round(graph_info.avg_channel_size).toLocaleString()} sats</span></p>
+          <p><span>Total Capacity</span><span className="val">{graph_info.total_network_capacity}</span></p>
+        </>
       )}
     </div>
   );

@@ -10,13 +10,15 @@ function VelocityStats() {
   }, []);
 
   return (
-    <div>
+    <div className="card">
       <h2>Liquidity Velocity</h2>
       {velocity_stats && (
         <>
-          <p>Velocity: {velocity_stats.velocity.toLocaleString()}</p>
-          <p>Monthly Volume: {velocity_stats.monthly_volume_usd.toLocaleString()}</p>
-          <p>Capacity: {velocity_stats.capacity_sats.toLocaleString()} SATS?</p>
+          <p><span>Velocity</span><span className="val">{velocity_stats.velocity.toLocaleString()}</span></p>
+          <p><span>Monthly Volume</span><span className="val">${velocity_stats.monthly_volume_usd.toLocaleString()}</span></p>
+          <p><span>Capacity</span><span className="val">{velocity_stats.capacity_sats.toLocaleString()} sats</span></p>
+          <p><span>Capacity (USD)</span><span className="val">${velocity_stats.capacity_usd.toLocaleString()}</span></p>
+          <p><span>BTC Price</span><span className="val">${velocity_stats.btc_price_usd.toLocaleString()}</span></p>
         </>
       )}
     </div>
