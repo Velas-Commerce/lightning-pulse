@@ -2,7 +2,7 @@
 
 Real-time Bitcoin Lightning Network analytics dashboard, built by [Velas Commerce](https://velascommerce.com).
 
-![Lightning Pulse dashboard](https://velascommerce.com/velas-logo.png)
+![Lightning Pulse dashboard](screenshot.png)
 
 ## What it shows
 
