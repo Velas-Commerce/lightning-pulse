@@ -122,6 +122,51 @@
   color: var(--amber);
 }
 
+/* ── TABLET HEADER (641–900px) ── */
+@media (min-width: 641px) and (max-width: 900px) {
+  .site-header {
+    padding: 0 1rem;
+  }
+
+  .site-header-inner {
+    height: auto;
+    padding: 0.75rem 0;
+    gap: 0.75rem;
+  }
+
+  /* Remove absolute centering — let flexbox handle spacing */
+  .site-header-product {
+    position: static;
+    transform: none;
+  }
+
+  .site-header-logo-img {
+    height: 44px;
+  }
+
+  .site-header-pulse-logo {
+    height: 38px;
+  }
+
+  .site-header-product-name {
+    font-size: 1.1rem;
+  }
+
+  .site-header-tagline {
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+  }
+
+  .site-header-back {
+    font-size: 0.62rem;
+  }
+
+  .site-header-status,
+  .site-header-refresh {
+    display: none;
+  }
+}
+
 /* ── MOBILE HEADER ── */
 @media (max-width: 640px) {
   .site-header {
