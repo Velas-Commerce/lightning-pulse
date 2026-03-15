@@ -15,7 +15,7 @@ function Delta({ lnd, mempool }: { lnd: number; mempool: number }) {
   return <span className={cls}>{pct.toFixed(0)}%</span>;
 }
 
-function NetworkTopology() {
+function NetworkTopology({ refreshKey }: { refreshKey?: number }) {
   const [ls, setLs] = useState<LightningStatsResponse | null>(null);
   const [gi, setGi] = useState<GraphInfo | null>(null);
   const [flash, setFlash] = useState(false);
@@ -26,7 +26,7 @@ function NetworkTopology() {
       setGi(data);
       setFlash(true);
     });
-  }, []);
+  }, [refreshKey]);
 
   const s = ls?.latest;
 

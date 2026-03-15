@@ -218,7 +218,7 @@ function LorenzCurve({ gini }: { gini: number }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-function NetworkMetricsList() {
+function NetworkMetricsList({ refreshKey }: { refreshKey?: number }) {
   const [network_metrics, setNetworkMetrics] = useState<NetworkMetrics | null>(null);
   const [flash, setFlash] = useState(false);
 
@@ -227,7 +227,7 @@ function NetworkMetricsList() {
       setNetworkMetrics(data);
       setTimeout(() => setFlash(true), 1700);
     });
-  }, []);
+  }, [refreshKey]);
 
   return (
     <div className={`card${flash ? " card--flash" : ""}`}>

@@ -101,6 +101,12 @@
   border-radius: 3px;
 }
 
+.site-header-refresh {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
 .site-header-back {
   font-size: 0.7rem;
   letter-spacing: 0.1em;

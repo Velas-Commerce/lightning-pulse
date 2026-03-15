@@ -4,7 +4,7 @@ import { fetchLargestNodes } from "../api";
 import { satsToBtc } from "../utils";
 import InfoTooltip from "./InfoTooltip";
 
-function LargestNodesList() {
+function LargestNodesList({ refreshKey }: { refreshKey?: number }) {
   const [largest_nodes, setLargestNodes] = useState<LargestNode[] | null>(null);
   const [flash, setFlash] = useState(false);
 
@@ -13,7 +13,7 @@ function LargestNodesList() {
       setLargestNodes(data);
       setFlash(true);
     });
-  }, []);
+  }, [refreshKey]);
 
   return (
     <div className={`card${flash ? " card--flash" : ""}`}>

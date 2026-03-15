@@ -17,7 +17,7 @@ function getColor(count: number, maxCount: number): string {
 
 type Tooltip = { name: string; count: number; x: number; y: number } | null;
 
-function NodesPerCountryList() {
+function NodesPerCountryList({ refreshKey }: { refreshKey?: number }) {
   const [nodes_per_country, setNodesPerCountry] = useState<NodesPerCountry[] | null>(null);
   const [tooltip, setTooltip] = useState<Tooltip>(null);
   const [flash, setFlash] = useState(false);
@@ -28,7 +28,7 @@ function NodesPerCountryList() {
       setNodesPerCountry(data);
       setFlash(true);
     });
-  }, []);
+  }, [refreshKey]);
 
   if (!nodes_per_country) {
     return (

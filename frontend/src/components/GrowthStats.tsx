@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import type { LightningGrowthStats, BtcPrice } from "../types";
 import { fetchGrowthStats, fetchBtcPrice } from "../api";
 
-function GrowthStats() {
+function GrowthStats({ refreshKey }: { refreshKey?: number }) {
   const [growth_stats, setGrowthStats] = useState<LightningGrowthStats | null>(null);
   const [price, setPrice] = useState<BtcPrice | null>(null);
   const [flash, setFlash] = useState(false);
@@ -13,7 +13,7 @@ function GrowthStats() {
       setPrice(data);
       setFlash(true);
     });
-  }, []);
+  }, [refreshKey]);
 
   return (
     <div className={`card${flash ? " card--flash" : ""}`}>

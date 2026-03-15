@@ -1,4 +1,7 @@
-function Header({ status }: { status?: string }) {
+function Header({ status, lastRefreshed }: { status?: string; lastRefreshed?: Date }) {
+  const refreshLabel = lastRefreshed
+    ? `↻ Updated at ${lastRefreshed.toUTCString().slice(17, 25)} UTC`
+    : null;
   return (
     <header className="site-header">
       <div className="site-header-inner">
@@ -18,6 +21,7 @@ function Header({ status }: { status?: string }) {
           </div>
           <span className="site-header-tagline">Real-time Bitcoin Lightning Network Analytics</span>
           {status && <span className="site-header-status">{status}</span>}
+          {refreshLabel && <span className="site-header-refresh">{refreshLabel}</span>}
         </div>
 
         <a

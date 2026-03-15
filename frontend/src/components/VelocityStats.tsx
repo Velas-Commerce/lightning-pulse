@@ -153,13 +153,13 @@ function VelocityGauge({ velocity, onDone }: { velocity: number; onDone?: () => 
   );
 }
 
-function VelocityStats() {
+function VelocityStats({ refreshKey }: { refreshKey?: number }) {
   const [velocity_stats, setVelocityStats] = useState<LiquidityVelocity | null>(null);
   const [flash, setFlash] = useState(false);
 
   useEffect(() => {
     fetchVelocityStats().then((data) => setVelocityStats(data));
-  }, []);
+  }, [refreshKey]);
 
   function handleDone() {
     setFlash(true);
