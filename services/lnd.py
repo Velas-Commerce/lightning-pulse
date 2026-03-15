@@ -1,4 +1,6 @@
+import base64
 import os
+import tempfile
 import httpx
 from cachetools import TTLCache
 from dotenv import load_dotenv
@@ -8,7 +10,18 @@ load_dotenv()
 
 LND_URL = os.getenv("LND_URL") or ""
 MACAROON_HEX = os.getenv("LND_READONLY_MACAROON_HEX") or ""
-TLS_CERT_PATH = os.getenv("LND_TLS_CERT_PATH", "tls.cert") or "tls.cert"
+
+# Support two ways to supply the TLS cert:
+#   TLS_CERT_B64 — base64-encoded cert string (Railway / any env-var-only host)
+#   LND_TLS_CERT_PATH — path to cert file on disk (local dev default: tls.cert)
+_cert_b64 = os.getenv("TLS_CERT_B64")
+if _cert_b64:
+    _tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".cert")
+    _tmp.write(base64.b64decode(_cert_b64))
+    _tmp.close()
+    TLS_CERT_PATH = _tmp.name
+else:
+    TLS_CERT_PATH = os.getenv("LND_TLS_CERT_PATH", "tls.cert") or "tls.cert"
 
 HEADERS = {"Grpc-Metadata-Macaroon": MACAROON_HEX}
 
