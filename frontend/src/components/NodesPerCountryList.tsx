@@ -20,10 +20,14 @@ type Tooltip = { name: string; count: number; x: number; y: number } | null;
 function NodesPerCountryList() {
   const [nodes_per_country, setNodesPerCountry] = useState<NodesPerCountry[] | null>(null);
   const [tooltip, setTooltip] = useState<Tooltip>(null);
+  const [flash, setFlash] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetchNodesPerCountry().then((data) => setNodesPerCountry(data));
+    fetchNodesPerCountry().then((data) => {
+      setNodesPerCountry(data);
+      setFlash(true);
+    });
   }, []);
 
   if (!nodes_per_country) {
@@ -62,7 +66,7 @@ function NodesPerCountryList() {
     : 0;
 
   return (
-    <div className="card map-card">
+    <div className={`card map-card${flash ? " card--flash" : ""}`}>
       <h2>Nodes by Country</h2>
       <div className="map-wrapper" ref={wrapperRef} onMouseLeave={() => setTooltip(null)}>
         <ComposableMap projectionConfig={{ scale: 140 }} style={{ width: "100%", height: "auto" }}>

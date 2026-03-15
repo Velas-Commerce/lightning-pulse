@@ -8,13 +8,29 @@ function PulseRing({ score }: { score: number }) {
   const trackW = 10;
   const circumference = 2 * Math.PI * r;
   const ratio = Math.min(Math.max(score, 0), 100) / 100;
-  const filled = ratio * circumference;
+
+  // Animate from 0 → ratio on mount
+  const [animRatio, setAnimRatio] = useState(0);
+  useEffect(() => {
+    const duration = 1200;
+    const start = performance.now();
+    function frame(now: number) {
+      const t = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setAnimRatio(eased * ratio);
+      if (t < 1) requestAnimationFrame(frame);
+    }
+    const id = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(id);
+  }, [ratio]);
+
+  const filled = animRatio * circumference;
   const gap = circumference - filled;
 
   const arcColor =
-    ratio < 0.4 ? "#aa0000" :
-    ratio < 0.7 ? "#cc6600" :
-                  "#f5c400";
+    animRatio < 0.4 ? "#aa0000" :
+    animRatio < 0.7 ? "#cc6600" :
+                      "#f5c400";
 
   return (
     <svg viewBox="0 0 120 120" style={{ width: "100%", maxWidth: 130, display: "block", margin: "0 auto" }}>
@@ -72,6 +88,23 @@ function LorenzCurve({ gini }: { gini: number }) {
   const S = 92;           // plot area side length
   const V = S + 2 * M;   // viewBox side = 120
 
+  // Animate the curve drawing from left → right on mount
+  const [animOffset, setAnimOffset] = useState(1);
+  const [fillOpacity, setFillOpacity] = useState(0);
+  useEffect(() => {
+    const duration = 1600;
+    const start = performance.now();
+    function frame(now: number) {
+      const t = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setAnimOffset(1 - eased);
+      setFillOpacity(eased);
+      if (t < 1) requestAnimationFrame(frame);
+    }
+    const id = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(id);
+  }, [gini]);
+
   const alpha = (1 + gini) / Math.max(1 - gini, 0.001);
 
   // Origin = bottom-left in screen coords
@@ -114,16 +147,17 @@ function LorenzCurve({ gini }: { gini: number }) {
       <line x1={ox} y1={oy} x2={ox} y2={ey} stroke="#1e0808" strokeWidth={0.8} />
 
       {/* Inequality fill */}
-      <path d={fillD} fill="rgba(120, 20, 0, 0.18)" stroke="none" />
+      <path d={fillD} fill="rgba(120, 20, 0, 0.18)" stroke="none" opacity={fillOpacity} />
 
       {/* Equality line (dashed) */}
       <line x1={ox} y1={oy} x2={ex} y2={ey}
         stroke="#3a1010" strokeWidth={1.2} strokeDasharray="5 3" />
 
-      {/* Lorenz curve */}
+      {/* Lorenz curve — pathLength="1" normalises length so dashoffset 0→1 draws the line */}
       <path d={lorenzD}
         fill="none" stroke="var(--amber)" strokeWidth={1.8}
         strokeLinecap="round" strokeLinejoin="round"
+        pathLength={1} strokeDasharray={1} strokeDashoffset={animOffset}
         filter="url(#lorenz-glow)" />
 
       {/* Axis labels */}
@@ -144,13 +178,17 @@ function LorenzCurve({ gini }: { gini: number }) {
 // ── Main component ────────────────────────────────────────────────────────────
 function NetworkMetricsList() {
   const [network_metrics, setNetworkMetrics] = useState<NetworkMetrics | null>(null);
+  const [flash, setFlash] = useState(false);
 
   useEffect(() => {
-    fetchNetworkMetrics().then((data) => setNetworkMetrics(data));
+    fetchNetworkMetrics().then((data) => {
+      setNetworkMetrics(data);
+      setTimeout(() => setFlash(true), 1700);
+    });
   }, []);
 
   return (
-    <div className="card">
+    <div className={`card${flash ? " card--flash" : ""}`}>
       <h2>Network Metrics</h2>
       {network_metrics && (
         <>

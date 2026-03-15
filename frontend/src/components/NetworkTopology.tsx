@@ -17,16 +17,20 @@ function Delta({ lnd, mempool }: { lnd: number; mempool: number }) {
 function NetworkTopology() {
   const [ls, setLs] = useState<LightningStatsResponse | null>(null);
   const [gi, setGi] = useState<GraphInfo | null>(null);
+  const [flash, setFlash] = useState(false);
 
   useEffect(() => {
     fetchLightningStats().then(setLs);
-    fetchGraphInfo().then(setGi);
+    fetchGraphInfo().then((data) => {
+      setGi(data);
+      setFlash(true);
+    });
   }, []);
 
   const s = ls?.latest;
 
   return (
-    <div className="card topology-card">
+    <div className={`card topology-card${flash ? " card--flash" : ""}`}>
       <h2>Network Topology</h2>
 
       {s && gi && (

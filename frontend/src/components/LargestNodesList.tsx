@@ -5,13 +5,17 @@ import { satsToBtc } from "../utils";
 
 function LargestNodesList() {
   const [largest_nodes, setLargestNodes] = useState<LargestNode[] | null>(null);
+  const [flash, setFlash] = useState(false);
 
   useEffect(() => {
-    fetchLargestNodes().then((data) => setLargestNodes(data));
+    fetchLargestNodes().then((data) => {
+      setLargestNodes(data);
+      setFlash(true);
+    });
   }, []);
 
   return (
-    <div className="card">
+    <div className={`card${flash ? " card--flash" : ""}`}>
       <h2>Largest Lightning Nodes</h2>
       {largest_nodes && (
         <ul>

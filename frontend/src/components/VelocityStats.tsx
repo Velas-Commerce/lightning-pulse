@@ -18,14 +18,30 @@ function arcSeg(from: { x: number; y: number }, to: { x: number; y: number }, r:
   return `M ${from.x.toFixed(2)} ${from.y.toFixed(2)} A ${r} ${r} 0 0 1 ${to.x.toFixed(2)} ${to.y.toFixed(2)}`;
 }
 
-function VelocityGauge({ velocity }: { velocity: number }) {
+function VelocityGauge({ velocity, onDone }: { velocity: number; onDone?: () => void }) {
   const cx = 100, cy = 98, r = 72;
   const trackW = 13;
 
-  // Gauge spans from 180° (9-o'clock / left) → 0° (3-o'clock / right), CW through top.
-  // angle = 180 - ratio * 180  →  0 vel = left, MAX vel = right.
   const ratio = Math.min(Math.max(velocity, 0), MAX_VEL) / MAX_VEL;
-  const needleAngle = 180 - ratio * 180;
+
+  // Animate from 0 → ratio on mount
+  const [animRatio, setAnimRatio] = useState(0);
+  useEffect(() => {
+    const duration = 1400;
+    const start = performance.now();
+    function frame(now: number) {
+      const t = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setAnimRatio(eased * ratio);
+      if (t < 1) requestAnimationFrame(frame);
+      else onDone?.();
+    }
+    const id = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(id);
+  }, [ratio]);
+
+  // Gauge spans from 180° (9-o'clock / left) → 0° (3-o'clock / right), CW through top.
+  const needleAngle = 180 - animRatio * 180;
 
   const startPt = pt(cx, cy, 180, r);  // left  (28, 98)
   const endPt   = pt(cx, cy, 0,   r);  // right (172, 98)
@@ -44,9 +60,9 @@ function VelocityGauge({ velocity }: { velocity: number }) {
 
   // Active fill color based on zone
   const fillColor =
-    ratio < 0.33 ? "#aa0000" :
-    ratio < 0.66 ? "#cc6600" :
-                   "#f5c400";
+    animRatio < 0.33 ? "#aa0000" :
+    animRatio < 0.66 ? "#cc6600" :
+                       "#f5c400";
 
   // Tick marks and labels at each integer velocity step
   const ticks = Array.from({ length: MAX_VEL + 1 }, (_, i) => i / MAX_VEL);
@@ -85,7 +101,7 @@ function VelocityGauge({ velocity }: { velocity: number }) {
         fill="none" stroke="#3a3000" strokeWidth={trackW} strokeLinecap="butt" />
 
       {/* ── Active fill (glow arc from start to needle) ── */}
-      {ratio > 0.005 && (
+      {animRatio > 0.005 && (
         <path
           d={`M ${startPt.x.toFixed(2)} ${startPt.y.toFixed(2)} A ${r} ${r} 0 0 1 ${fillPt.x.toFixed(2)} ${fillPt.y.toFixed(2)}`}
           fill="none" stroke={fillColor} strokeWidth={trackW - 3}
@@ -138,17 +154,22 @@ function VelocityGauge({ velocity }: { velocity: number }) {
 
 function VelocityStats() {
   const [velocity_stats, setVelocityStats] = useState<LiquidityVelocity | null>(null);
+  const [flash, setFlash] = useState(false);
 
   useEffect(() => {
     fetchVelocityStats().then((data) => setVelocityStats(data));
   }, []);
 
+  function handleDone() {
+    setFlash(true);
+  }
+
   return (
-    <div className="card velocity-card">
+    <div className={`card velocity-card${flash ? " card--flash" : ""}`}>
       <h2>Liquidity Velocity</h2>
       {velocity_stats && (
         <div className="velocity-body">
-          <VelocityGauge velocity={velocity_stats.velocity} />
+          <VelocityGauge velocity={velocity_stats.velocity} onDone={handleDone} />
 
           <div className="velocity-readout">
             <span className="velocity-number">{velocity_stats.velocity.toFixed(2)}</span>

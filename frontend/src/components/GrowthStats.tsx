@@ -5,14 +5,18 @@ import { fetchGrowthStats, fetchBtcPrice } from "../api";
 function GrowthStats() {
   const [growth_stats, setGrowthStats] = useState<LightningGrowthStats | null>(null);
   const [price, setPrice] = useState<BtcPrice | null>(null);
+  const [flash, setFlash] = useState(false);
 
   useEffect(() => {
     fetchGrowthStats().then((data) => setGrowthStats(data));
-    fetchBtcPrice().then((data) => setPrice(data));
+    fetchBtcPrice().then((data) => {
+      setPrice(data);
+      setFlash(true);
+    });
   }, []);
 
   return (
-    <div className="card">
+    <div className={`card${flash ? " card--flash" : ""}`}>
       <h2>Market &amp; Growth</h2>
       {price && (
         <>
