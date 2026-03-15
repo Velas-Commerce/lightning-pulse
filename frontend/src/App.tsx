@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import "./App.css";
 import type { HealthStatus } from "./types";
 import { fetchHealth } from "./api";
+import Header from "./components/Header";
 import NodesPerCountryList from "./components/NodesPerCountryList";
 import LargestNodesList from "./components/LargestNodesList";
 import NetworkMetricsList from "./components/NetworkMetricsList";
@@ -16,16 +17,13 @@ function App() {
     fetchHealth().then((data) => setHealth(data));
   }, []);
 
+  const statusLabel = health
+    ? `API ${health.status} · ${health.metrics_ready ? "live" : "loading"}`
+    : undefined;
+
   return (
     <div>
-      <header className="dashboard-header">
-        <h1>⚡ Lightning Pulse</h1>
-        {health && (
-          <p className="api-status">
-            API {health.status} · metrics {health.metrics_ready ? "ready" : "loading"}
-          </p>
-        )}
-      </header>
+      <Header status={statusLabel} />
       <div className="dashboard-grid">
         <GrowthStats />
         <VelocityStats />
