@@ -1,4 +1,5 @@
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from routers.health import router as health_router
@@ -18,9 +19,12 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+_raw = os.getenv("CORS_ORIGINS", "http://localhost:5173")
+_origins = [o.strip() for o in _raw.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # whatever port your React dev server uses
+    allow_origins=_origins,
     allow_methods=["GET"],
     allow_headers=["*"],
 )
