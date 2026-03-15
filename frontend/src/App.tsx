@@ -2,11 +2,10 @@ import { useState, useEffect } from "react";
 import "./App.css";
 import type { HealthStatus } from "./types";
 import { fetchHealth } from "./api";
-import LightningStats from "./components/LightningStats";
 import NodesPerCountryList from "./components/NodesPerCountryList";
 import LargestNodesList from "./components/LargestNodesList";
-import GraphInfoList from "./components/GraphInfoList";
 import NetworkMetricsList from "./components/NetworkMetricsList";
+import NetworkTopology from "./components/NetworkTopology";
 import GrowthStats from "./components/GrowthStats";
 import VelocityStats from "./components/VelocityStats";
 
@@ -31,8 +30,7 @@ function App() {
         <GrowthStats />
         <VelocityStats />
         <NetworkMetricsList />
-        <LightningStats />
-        <GraphInfoList />
+        <NetworkTopology />
         <NodesPerCountryList />
         <LargestNodesList />
       </div>

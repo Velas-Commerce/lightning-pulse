@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import type { LargestNode } from "../types";
 import { fetchLargestNodes } from "../api";
+import { satsToBtc } from "../utils";
 
 function LargestNodesList() {
   const [largest_nodes, setLargestNodes] = useState<LargestNode[] | null>(null);
@@ -17,7 +18,7 @@ function LargestNodesList() {
           {largest_nodes.slice(0, 20).map((node) => (
             <li key={node.publicKey}>
               <span className="label">{node.alias || node.publicKey.slice(0, 12) + "…"}</span>
-              <span className="val">{node.capacity.toLocaleString()} sats · {node.channels} ch</span>
+              <span className="val">{satsToBtc(node.capacity)} · {node.channels} ch</span>
             </li>
           ))}
         </ul>
