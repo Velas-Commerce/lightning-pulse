@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import type { LiquidityVelocity } from "../types";
 import { fetchVelocityStats } from "../api";
 import { satsToBtc } from "../utils";
+import InfoTooltip from "./InfoTooltip";
 
 const MAX_VEL = 5;
 
@@ -166,7 +167,25 @@ function VelocityStats() {
 
   return (
     <div className={`card velocity-card${flash ? " card--flash" : ""}`}>
-      <h2>Liquidity Velocity</h2>
+      <h2>
+        Liquidity Velocity
+        <InfoTooltip>
+          <span className="info-tooltip-title">What is Liquidity Velocity?</span>
+          <p className="info-tooltip-body">
+            Velocity measures <strong>how efficiently capital is being used</strong> — not just how much exists.
+            A high-capacity network with low velocity is like cash sitting idle in a vault.
+            <span className="info-tooltip-formula">Velocity = Monthly Volume ÷ Total Capacity</span>
+            A score of <strong>1.0</strong> means the entire network capacity is routed once per month.
+            At <strong>3.12</strong>, the Lightning Network is turning over its full capacity more than
+            3× every month — a strong indicator of active, efficient utilization.
+            <span className="info-tooltip-note">
+              ⚡ Capacity is sourced live from the Lightning Network. Monthly volume uses published
+              estimates from River &amp; Breez — exact figures are unknowable since Lightning
+              payments are private by design.
+            </span>
+          </p>
+        </InfoTooltip>
+      </h2>
       {velocity_stats && (
         <div className="velocity-body">
           <VelocityGauge velocity={velocity_stats.velocity} onDone={handleDone} />

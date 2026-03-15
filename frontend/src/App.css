@@ -347,6 +347,17 @@
   font-size: 0.75rem;
 }
 
+.card .sources a {
+  color: var(--text-dim);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.card .sources a:hover {
+  color: var(--amber);
+  text-decoration: underline;
+}
+
 /* ── PULSE ANIMATION ── */
 @keyframes pulse-beat {
   0%, 100% { opacity: 1; filter: drop-shadow(0 0 4px var(--lightning-glow)); }
@@ -541,6 +552,113 @@
   font-size: 0.82rem;
   color: var(--text);
   font-variant-numeric: tabular-nums;
+}
+
+/* ── INFO TOOLTIP ── */
+.info-tooltip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.45rem;
+  vertical-align: middle;
+}
+
+.info-tooltip-icon {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--amber);
+  opacity: 0.85;
+  transition: opacity 0.2s, color 0.2s;
+  line-height: 1;
+}
+
+.info-tooltip-icon:hover {
+  opacity: 1;
+  color: var(--lightning);
+}
+
+.info-tooltip-box {
+  transform: translateX(-50%);
+  width: 280px;
+  background: #080202;
+  border: 1px solid rgba(180, 80, 0, 0.6);
+  border-radius: 6px;
+  padding: 0.85rem 1rem;
+  z-index: 9999;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.9), 0 0 20px rgba(140, 0, 0, 0.25);
+  pointer-events: none;
+  animation: fadeUp 0.15s ease both;
+  /* Reset inherited h2 styles */
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: normal;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+
+.info-tooltip-box p {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.info-tooltip-box::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom-color: rgba(180, 80, 0, 0.5);
+}
+
+.info-tooltip-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin: 0 0 0.5rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--separator);
+  display: block;
+}
+
+.info-tooltip-body {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.info-tooltip-body strong {
+  color: var(--text);
+}
+
+.info-tooltip-formula {
+  display: block;
+  margin: 0.5rem 0;
+  padding: 0.35rem 0.6rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 2px solid var(--crimson);
+  border-radius: 2px;
+  font-size: 0.72rem;
+  color: var(--lightning);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+}
+
+.info-tooltip-note {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  opacity: 0.75;
+  font-style: italic;
 }
 
 /* ── MAP CARD ── */

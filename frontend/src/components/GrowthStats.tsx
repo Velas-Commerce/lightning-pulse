@@ -40,7 +40,11 @@ function GrowthStats() {
           <p className="section-label">Sources</p>
           <ul className="sources">
             {growth_stats.sources.map((source) => (
-              <li key={source}>{source}</li>
+              <li key={source}>
+                <a href={source} target="_blank" rel="noopener noreferrer">
+                  {new URL(source).hostname.replace(/^www\./, "")}
+                </a>
+              </li>
             ))}
           </ul>
         </>
