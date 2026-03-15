@@ -324,6 +324,75 @@
   white-space: nowrap;
 }
 
+/* ── LARGEST NODES TABLE ── */
+.node-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.83rem;
+}
+
+.node-th {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--separator);
+  text-align: left;
+}
+
+.node-th--capacity,
+.node-th--channels {
+  text-align: right;
+}
+
+.node-row {
+  border-bottom: 1px solid var(--separator);
+  transition: background 0.15s;
+  cursor: default;
+}
+
+.node-row:last-child {
+  border-bottom: none;
+}
+
+.node-row:hover {
+  background: rgba(160, 0, 0, 0.08);
+  box-shadow: inset 0 0 8px rgba(200, 0, 0, 0.18);
+}
+
+.node-row:hover .node-td {
+  color: var(--text);
+  text-shadow: 0 0 6px rgba(220, 60, 60, 0.5);
+}
+
+.node-td {
+  padding: 0.4rem 0.5rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  transition: color 0.15s, text-shadow 0.15s;
+}
+
+.node-td--name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 0;
+  width: 50%;
+}
+
+.node-td--capacity {
+  text-align: right;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.node-td--channels {
+  text-align: right;
+  white-space: nowrap;
+}
+
 /* ── SECTION HEADERS (h2 used as a non-card header within a card) ── */
 .card .section-label {
   font-size: 0.6rem;

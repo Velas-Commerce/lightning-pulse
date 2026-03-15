@@ -69,7 +69,12 @@ function NodesPerCountryList() {
     <div className={`card map-card${flash ? " card--flash" : ""}`}>
       <h2>Nodes by Country</h2>
       <div className="map-wrapper" ref={wrapperRef} onMouseLeave={() => setTooltip(null)}>
-        <ComposableMap projectionConfig={{ scale: 140 }} style={{ width: "100%", height: "auto" }}>
+        <ComposableMap
+          projectionConfig={{ scale: 130, center: [0, 0] }}
+          width={800}
+          height={340}
+          style={{ width: "100%", height: "auto" }}
+        >
           <Geographies geography={GEO_URL}>
             {({ geographies }) =>
               geographies.map((geo) => {
