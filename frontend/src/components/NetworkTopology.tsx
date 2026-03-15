@@ -3,6 +3,7 @@ import type { LightningStatsResponse, GraphInfo } from "../types";
 import { fetchLightningStats, fetchGraphInfo } from "../api";
 import { satsToBtc } from "../utils";
 import InfoTooltip from "./InfoTooltip";
+import { SkeletonStatRow } from "./Skeleton";
 
 // Delta badge: shows what % of the mempool figure your LND node can see.
 function Delta({ lnd, mempool }: { lnd: number; mempool: number }) {
@@ -49,7 +50,7 @@ function NetworkTopology({ refreshKey }: { refreshKey?: number }) {
         </InfoTooltip>
       </h2>
 
-      {s && gi && (
+      {s && gi ? (
         <>
           {/* ── Comparison table ──────────────────────────── */}
           <div className="nt-compare-table">
@@ -136,6 +137,12 @@ function NetworkTopology({ refreshKey }: { refreshKey?: number }) {
           <p><span>Tor Nodes</span><span className="val">{s.tor_nodes.toLocaleString()}</span></p>
           <p><span>Clearnet Nodes</span><span className="val">{s.clearnet_nodes.toLocaleString()}</span></p>
           <p><span>Unannounced</span><span className="val">{s.unannounced_nodes.toLocaleString()}</span></p>
+        </>
+      ) : (
+        <>
+          <SkeletonStatRow /><SkeletonStatRow /><SkeletonStatRow /><SkeletonStatRow />
+          <SkeletonStatRow /><SkeletonStatRow /><SkeletonStatRow /><SkeletonStatRow />
+          <SkeletonStatRow /><SkeletonStatRow /><SkeletonStatRow />
         </>
       )}
     </div>

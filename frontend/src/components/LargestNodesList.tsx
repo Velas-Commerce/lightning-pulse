@@ -3,6 +3,7 @@ import type { LargestNode } from "../types";
 import { fetchLargestNodes } from "../api";
 import { satsToBtc } from "../utils";
 import InfoTooltip from "./InfoTooltip";
+import { SkeletonTableRows } from "./Skeleton";
 
 function LargestNodesList({ refreshKey }: { refreshKey?: number }) {
   const [largest_nodes, setLargestNodes] = useState<LargestNode[] | null>(null);
@@ -28,7 +29,7 @@ function LargestNodesList({ refreshKey }: { refreshKey?: number }) {
           </p>
         </InfoTooltip>
       </h2>
-      {largest_nodes && (
+      {largest_nodes ? (
         <table className="node-table">
           <thead>
             <tr>
@@ -47,6 +48,8 @@ function LargestNodesList({ refreshKey }: { refreshKey?: number }) {
             ))}
           </tbody>
         </table>
+      ) : (
+        <SkeletonTableRows rows={10} />
       )}
     </div>
   );

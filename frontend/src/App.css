@@ -245,6 +245,51 @@
 .card:nth-child(7) { animation-delay: 0.36s; }
 .card:nth-child(8) { animation-delay: 0.42s; }
 
+/* ── SKELETON LOADING ── */
+@keyframes skeleton-shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #180a0a 25%,
+    #2e1212 50%,
+    #180a0a 75%
+  );
+  background-size: 1200px 100%;
+  animation: skeleton-shimmer 1.8s infinite linear;
+  border-radius: 3px;
+}
+
+.skeleton-line {
+  height: 11px;
+  margin-bottom: 10px;
+}
+
+.skeleton-circle {
+  border-radius: 50%;
+  margin: 0 auto 12px;
+}
+
+.skeleton-block {
+  margin-bottom: 10px;
+}
+
+.skeleton-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--separator);
+}
+
+.skeleton-row:last-child {
+  border-bottom: none;
+}
+
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0); }

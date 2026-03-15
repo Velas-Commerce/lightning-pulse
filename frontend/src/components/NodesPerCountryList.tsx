@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { ComposableMap, Geographies, Geography } from "react-simple-maps";
 import type { NodesPerCountry } from "../types";
 import { fetchNodesPerCountry } from "../api";
+import { SkeletonBlock, SkeletonStatRow } from "./Skeleton";
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 const TOOLTIP_W = 170;
@@ -34,6 +35,9 @@ function NodesPerCountryList({ refreshKey }: { refreshKey?: number }) {
     return (
       <div className="card map-card">
         <h2>Nodes by Country</h2>
+        <SkeletonBlock width="100%" height={200} />
+        <SkeletonStatRow /><SkeletonStatRow /><SkeletonStatRow />
+        <SkeletonStatRow /><SkeletonStatRow />
       </div>
     );
   }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import type { LightningGrowthStats, BtcPrice, MonthlyVolumeEntry } from "../types";
 import { fetchGrowthStats, fetchBtcPrice } from "../api";
+import { SkeletonStatRow } from "./Skeleton";
 
 // ── Volume Bar Chart ──────────────────────────────────────────────────────────
 function VolumeChart({ data }: { data: MonthlyVolumeEntry[] }) {
@@ -143,13 +144,18 @@ function GrowthStats({ refreshKey }: { refreshKey?: number }) {
   return (
     <div className={`card${flash ? " card--flash" : ""}`}>
       <h2>Market &amp; Growth</h2>
-      {price && (
+      {price ? (
         <>
           <p><span>BTC Price</span><span className="val">${price.USD.toLocaleString()} USD</span></p>
           <p><span>Sats per Dollar</span><span className="val">{Math.round(100_000_000 / price.USD).toLocaleString()} sats</span></p>
         </>
+      ) : (
+        <>
+          <SkeletonStatRow />
+          <SkeletonStatRow valWidth="22%" />
+        </>
       )}
-      {growth_stats && (
+      {growth_stats ? (
         <>
           <p><span>Users with Access</span><span className="val">{growth_stats.num_lightning_users.toLocaleString()}</span></p>
           <p><span>Average Payment</span><span className="val">${growth_stats.avg_transaction_usd.toLocaleString()}</span></p>
@@ -165,6 +171,13 @@ function GrowthStats({ refreshKey }: { refreshKey?: number }) {
               </li>
             ))}
           </ul>
+        </>
+      ) : (
+        <>
+          <SkeletonStatRow />
+          <SkeletonStatRow valWidth="22%" />
+          <SkeletonStatRow labelWidth="35%" valWidth="18%" />
+          <SkeletonStatRow labelWidth="55%" valWidth="28%" />
         </>
       )}
     </div>

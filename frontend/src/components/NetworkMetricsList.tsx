@@ -2,6 +2,23 @@ import { useState, useEffect } from "react";
 import type { NetworkMetrics } from "../types";
 import { fetchNetworkMetrics } from "../api";
 import InfoTooltip from "./InfoTooltip";
+import { SkeletonCircle, SkeletonStatRow } from "./Skeleton";
+
+function NetworkMetricsSkeleton() {
+  return (
+    <>
+      <div className="nm-featured">
+        <div className="nm-feature"><SkeletonCircle size={120} /></div>
+        <div className="nm-feature"><SkeletonCircle size={120} /></div>
+      </div>
+      <SkeletonStatRow />
+      <SkeletonStatRow valWidth="20%" />
+      <SkeletonStatRow labelWidth="40%" valWidth="25%" />
+      <SkeletonStatRow labelWidth="45%" valWidth="22%" />
+      <SkeletonStatRow labelWidth="38%" valWidth="35%" />
+    </>
+  );
+}
 
 // ── Replicate backend component scoring ───────────────────────────────────────
 function calcComponents(gini: number, top10: number, feeRate: number) {
@@ -232,7 +249,7 @@ function NetworkMetricsList({ refreshKey }: { refreshKey?: number }) {
   return (
     <div className={`card${flash ? " card--flash" : ""}`}>
       <h2>Network Metrics</h2>
-      {network_metrics && (
+      {network_metrics ? (
         <>
           {/* ── Featured visuals ── */}
           <div className="nm-featured">
@@ -293,6 +310,8 @@ function NetworkMetricsList({ refreshKey }: { refreshKey?: number }) {
           <p><span>Median Node Degree</span><span className="val">{network_metrics.median_node_degree.toLocaleString()}</span></p>
           <p><span>Last Computed</span><span className="val">{network_metrics.last_computed}</span></p>
         </>
+      ) : (
+        <NetworkMetricsSkeleton />
       )}
     </div>
   );

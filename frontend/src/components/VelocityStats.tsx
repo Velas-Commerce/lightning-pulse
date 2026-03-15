@@ -3,6 +3,18 @@ import type { LiquidityVelocity } from "../types";
 import { fetchVelocityStats } from "../api";
 import { satsToBtc } from "../utils";
 import InfoTooltip from "./InfoTooltip";
+import { SkeletonCircle, SkeletonStatRow } from "./Skeleton";
+
+function VelocitySkeleton() {
+  return (
+    <div className="velocity-body">
+      <SkeletonCircle size={130} />
+      <SkeletonStatRow labelWidth="40%" valWidth="25%" />
+      <SkeletonStatRow labelWidth="50%" valWidth="30%" />
+      <SkeletonStatRow labelWidth="35%" valWidth="20%" />
+    </div>
+  );
+}
 
 const MAX_VEL = 5;
 
@@ -186,7 +198,7 @@ function VelocityStats({ refreshKey }: { refreshKey?: number }) {
           </p>
         </InfoTooltip>
       </h2>
-      {velocity_stats && (
+      {velocity_stats ? (
         <div className="velocity-body">
           <VelocityGauge velocity={velocity_stats.velocity} onDone={handleDone} />
 
@@ -210,6 +222,8 @@ function VelocityStats({ refreshKey }: { refreshKey?: number }) {
             </div>
           </div>
         </div>
+      ) : (
+        <VelocitySkeleton />
       )}
     </div>
   );
