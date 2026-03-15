@@ -122,6 +122,60 @@
   color: var(--amber);
 }
 
+/* ── MOBILE HEADER ── */
+@media (max-width: 640px) {
+  .site-header {
+    padding: 0 1rem;
+  }
+
+  .site-header-inner {
+    flex-direction: column;
+    justify-content: center;
+    height: auto;
+    padding: 0.9rem 0 0.6rem;
+    gap: 0.35rem;
+  }
+
+  /* Un-absolute the product block so it stacks naturally */
+  .site-header-product {
+    position: static;
+    transform: none;
+  }
+
+  .site-header-logo-img {
+    height: 40px;
+  }
+
+  .site-header-pulse-logo {
+    height: 34px;
+  }
+
+  .site-header-product-name {
+    font-size: 1.1rem;
+  }
+
+  .site-header-tagline {
+    font-size: 0.6rem;
+    letter-spacing: 0.12em;
+  }
+
+  /* Move back link inline below the product block — small and subtle */
+  .site-header-back {
+    font-size: 0.6rem;
+    letter-spacing: 0.08em;
+  }
+
+  /* Hide the left Velas logo on very small screens to avoid clutter */
+  .site-header-logo {
+    display: none;
+  }
+
+  .site-header-status,
+  .site-header-refresh {
+    display: none;
+  }
+}
+
 /* ── DASHBOARD TITLE SECTION ── */
 .dashboard-header {
   text-align: center;
