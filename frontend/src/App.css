@@ -581,7 +581,6 @@
 }
 
 .info-tooltip-box {
-  transform: translateX(-50%);
   width: 280px;
   background: #080202;
   border: 1px solid rgba(180, 80, 0, 0.6);
@@ -606,14 +605,23 @@
   border: none;
 }
 
+/* Arrow pointing up toward icon (tooltip is below the icon) */
 .info-tooltip-box::before {
   content: '';
   position: absolute;
   bottom: 100%;
-  left: 50%;
+  left: var(--arrow-left, 50%);
   transform: translateX(-50%);
   border: 6px solid transparent;
   border-bottom-color: rgba(180, 80, 0, 0.5);
+}
+
+/* Arrow pointing down toward icon (tooltip is above the icon) */
+.info-tooltip-box--above::before {
+  bottom: auto;
+  top: 100%;
+  border-bottom-color: transparent;
+  border-top-color: rgba(180, 80, 0, 0.5);
 }
 
 .info-tooltip-title {

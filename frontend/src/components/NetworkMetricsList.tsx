@@ -1,9 +1,24 @@
 import { useState, useEffect } from "react";
 import type { NetworkMetrics } from "../types";
 import { fetchNetworkMetrics } from "../api";
+import InfoTooltip from "./InfoTooltip";
+
+// ── Replicate backend component scoring ───────────────────────────────────────
+function calcComponents(gini: number, top10: number, feeRate: number) {
+  const equity = Math.max(0, Math.min(100, (0.95 - gini) / 0.35 * 100));
+  const decentralization = Math.max(0, Math.min(100, (0.70 - top10) / 0.50 * 100));
+  let fee = 0;
+  if (feeRate <= 0) fee = 0;
+  else if (feeRate < 500) fee = feeRate / 500 * 60;
+  else if (feeRate <= 5000) fee = 100;
+  else if (feeRate <= 20000) fee = Math.max(0, 100 - (feeRate - 5000) / 150);
+  return { equity, decentralization, fee };
+}
 
 // ── Pulse Score Ring ──────────────────────────────────────────────────────────
-function PulseRing({ score }: { score: number }) {
+function PulseRing({ score, gini, top10, feeRate }: {
+  score: number; gini: number; top10: number; feeRate: number;
+}) {
   const cx = 60, cy = 60, r = 44;
   const trackW = 10;
   const circumference = 2 * Math.PI * r;
@@ -32,8 +47,16 @@ function PulseRing({ score }: { score: number }) {
     animRatio < 0.7 ? "#cc6600" :
                       "#f5c400";
 
+  const [hovered, setHovered] = useState(false);
+  const { equity, decentralization, fee } = calcComponents(gini, top10, feeRate);
+
   return (
-    <svg viewBox="0 0 120 120" style={{ width: "100%", maxWidth: 130, display: "block", margin: "0 auto" }}>
+    <svg
+      viewBox="0 0 120 120"
+      style={{ width: "100%", maxWidth: 130, display: "block", margin: "0 auto", cursor: "default" }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       <defs>
         <filter id="pulse-glow" x="-30%" y="-30%" width="160%" height="160%">
           <feGaussianBlur stdDeviation="2.2" result="blur" />
@@ -58,23 +81,42 @@ function PulseRing({ score }: { score: number }) {
           strokeDasharray={`${filled.toFixed(2)} ${gap.toFixed(2)}`}
           transform={`rotate(-90 ${cx} ${cy})`}
           filter="url(#pulse-glow)"
-          opacity={0.9}
+          opacity={hovered ? 0.35 : 0.9}
+          style={{ transition: "opacity 0.2s" }}
         />
       )}
 
-      {/* Score */}
-      <g filter="url(#pulse-glow)" className="pulse-beat">
-        <text x={cx} y={cy - 5}
-          fill="var(--lightning)" fontSize="24" fontWeight="900"
-          textAnchor="middle" dominantBaseline="middle">
-          {Math.round(score)}
+      {/* Default: score */}
+      {!hovered && (
+        <g filter="url(#pulse-glow)" className="pulse-beat">
+          <text x={cx} y={cy - 5}
+            fill="var(--lightning)" fontSize="24" fontWeight="900"
+            textAnchor="middle" dominantBaseline="middle">
+            {Math.round(score)}
+          </text>
+        </g>
+      )}
+      {!hovered && (
+        <text x={cx} y={cy + 14}
+          fill="var(--text-dim)" fontSize="7" textAnchor="middle"
+          letterSpacing="0.12em">
+          / 100
         </text>
-      </g>
-      <text x={cx} y={cy + 14}
-        fill="var(--text-dim)" fontSize="7" textAnchor="middle"
-        letterSpacing="0.12em">
-        / 100
-      </text>
+      )}
+
+      {/* Hover: component breakdown */}
+      {hovered && (
+        <g>
+          <text x={cx} y={22} textAnchor="middle" fill="#a08868" fontSize="13" letterSpacing="0.08em">EQUITY</text>
+          <text x={cx} y={40} textAnchor="middle" fill="var(--lightning)" fontSize="26" fontWeight="700">{equity.toFixed(0)}</text>
+
+          <text x={cx} y={62} textAnchor="middle" fill="#a08868" fontSize="13" letterSpacing="0.08em">DECENT.</text>
+          <text x={cx} y={80} textAnchor="middle" fill="var(--lightning)" fontSize="26" fontWeight="700">{decentralization.toFixed(0)}</text>
+
+          <text x={cx} y={102} textAnchor="middle" fill="#a08868" fontSize="13" letterSpacing="0.08em">FEE HEALTH</text>
+          <text x={cx} y={118} textAnchor="middle" fill="var(--lightning)" fontSize="26" fontWeight="700">{fee.toFixed(0)}</text>
+        </g>
+      )}
     </svg>
   );
 }
@@ -195,14 +237,51 @@ function NetworkMetricsList() {
           {/* ── Featured visuals ── */}
           <div className="nm-featured">
             <div className="nm-feature">
-              <PulseRing score={network_metrics.pulse_score} />
-              <div className="nm-feature-label">Pulse Score</div>
+              <PulseRing
+                score={network_metrics.pulse_score}
+                gini={network_metrics.gini_coefficient}
+                top10={network_metrics.top10_centralization}
+                feeRate={network_metrics.median_fee_rate}
+              />
+              <div className="nm-feature-label">
+                Pulse Score
+                <InfoTooltip>
+                  <span className="info-tooltip-title">What is the Pulse Score?</span>
+                  <p className="info-tooltip-body">
+                    A composite <strong>network health score</strong> from 0–100, computed from three pillars:
+                    <span className="info-tooltip-formula">Equity 35% · Decentralization 35% · Fee Health 30%</span>
+                    <strong>Equity</strong> — how evenly channel capacity is distributed across the network (lower Gini = higher score).<br /><br />
+                    <strong>Decentralization</strong> — how much capacity is concentrated in the top 10 nodes. A network dominated by a few large hubs scores lower.<br /><br />
+                    <strong>Fee Health</strong> — whether median fees sit in a healthy routing range (~500–5,000 ppm). Fees that are too low suggest spam risk; too high means poor usability.
+                    <span className="info-tooltip-note">
+                      ⚡ Computed from our LND node's graph — refreshed every 24 hours.
+                    </span>
+                  </p>
+                </InfoTooltip>
+              </div>
             </div>
             <div className="nm-feature">
               <LorenzCurve gini={network_metrics.gini_coefficient} />
               <div className="nm-feature-label">
                 Gini&nbsp;
                 <span className="nm-feature-val">{network_metrics.gini_coefficient.toFixed(3)}</span>
+                <InfoTooltip>
+                  <span className="info-tooltip-title">What is the Gini Coefficient?</span>
+                  <p className="info-tooltip-body">
+                    Borrowed from economics, the Gini coefficient measures <strong>wealth inequality</strong> —
+                    here applied to Lightning channel capacity. It asks: how evenly is liquidity distributed across the network?
+                    <span className="info-tooltip-formula">0.0 = perfectly equal · 1.0 = one node holds everything</span>
+                    The <strong>Lorenz curve</strong> above visualises this — the further it bows away from
+                    the diagonal equality line, the higher the inequality.
+                    <br /><br />
+                    Lightning typically scores <strong>0.75–0.90</strong>. A high score isn't necessarily bad —
+                    large routing hubs naturally hold more capacity — but a score approaching 1.0 would
+                    signal dangerous centralisation.
+                    <span className="info-tooltip-note">
+                      ⚡ Computed from channel capacities seen by our LND node.
+                    </span>
+                  </p>
+                </InfoTooltip>
               </div>
             </div>
           </div>
