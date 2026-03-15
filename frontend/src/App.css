@@ -167,6 +167,52 @@
   }
 }
 
+/* ── SITE FOOTER ── */
+.site-footer {
+  margin-top: 3rem;
+  padding: 2rem 1.5rem;
+}
+
+.site-footer::before {
+  content: '';
+  display: block;
+  height: 2px;
+  margin-bottom: 2rem;
+  background: linear-gradient(90deg, transparent, var(--crimson) 25%, var(--amber) 50%, var(--crimson) 75%, transparent);
+}
+
+.site-footer-inner {
+  max-width: 1440px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.site-footer-social {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.site-footer-social-link {
+  color: var(--text-dim);
+  opacity: 0.6;
+  transition: opacity 0.2s, color 0.2s;
+}
+
+.site-footer-social-link:hover {
+  opacity: 1;
+  color: var(--amber);
+}
+
+.site-footer-copy {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  opacity: 0.5;
+  letter-spacing: 0.06em;
+}
+
 /* ── MOBILE HEADER ── */
 @media (max-width: 640px) {
   .site-header {

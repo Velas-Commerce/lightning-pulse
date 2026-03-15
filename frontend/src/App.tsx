@@ -3,6 +3,7 @@ import "./App.css";
 import type { HealthStatus } from "./types";
 import { fetchHealth } from "./api";
 import Header from "./components/Header";
+import Footer from "./components/Footer";
 import NodesPerCountryList from "./components/NodesPerCountryList";
 import LargestNodesList from "./components/LargestNodesList";
 import NetworkMetricsList from "./components/NetworkMetricsList";
@@ -44,6 +45,7 @@ function App() {
         <NodesPerCountryList refreshKey={refreshKey} />
         <LargestNodesList refreshKey={refreshKey} />
       </div>
+      <Footer />
     </div>
   );
 }
