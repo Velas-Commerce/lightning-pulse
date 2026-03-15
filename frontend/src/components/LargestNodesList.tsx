@@ -33,14 +33,16 @@ function LargestNodesList({ refreshKey }: { refreshKey?: number }) {
         <table className="node-table">
           <thead>
             <tr>
+              <th className="node-th node-th--rank">#</th>
               <th className="node-th node-th--name">Name</th>
               <th className="node-th node-th--capacity">Capacity</th>
               <th className="node-th node-th--channels">Channels</th>
             </tr>
           </thead>
           <tbody>
-            {largest_nodes.slice(0, 20).map((node) => (
+            {largest_nodes.slice(0, 20).map((node, i) => (
               <tr key={node.publicKey} className="node-row">
+                <td className="node-td node-td--rank">#{i + 1}</td>
                 <td className="node-td node-td--name">{node.alias || node.publicKey.slice(0, 12) + "…"}</td>
                 <td className="node-td node-td--capacity">{satsToBtc(node.capacity)}</td>
                 <td className="node-td node-td--channels">{node.channels.toLocaleString()}</td>

@@ -492,6 +492,15 @@
   text-align: left;
 }
 
+.node-th--rank,
+.node-td--rank {
+  width: 2rem;
+  text-align: right;
+  color: var(--text-dim);
+  font-size: 0.62rem;
+  padding-right: 0.75rem;
+}
+
 .node-th--capacity,
 .node-th--channels {
   text-align: right;
