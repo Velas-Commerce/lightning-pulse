@@ -54,6 +54,11 @@ staticfiles/
 .DS_Store
 Thumbs.db
 
+# Frontend dependencies and build output
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
 # notes and scratch
 notes.md
 scratch.py
