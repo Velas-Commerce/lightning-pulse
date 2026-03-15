@@ -25,7 +25,7 @@ body {
     radial-gradient(ellipse at 85% 100%, rgba(128, 64, 0, 0.1) 0%, transparent 55%);
   color: var(--text);
   font-family:
-    "Inter",
+    "Space Grotesk",
     system-ui,
     -apple-system,
     sans-serif;
