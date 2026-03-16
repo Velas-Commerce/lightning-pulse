@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { ComposableMap, Geographies, Geography } from "react-simple-maps";
+import { ComposableMap, Geographies, Geography } from "@vnedyalk0v/react19-simple-maps";
 import type { NodesPerCountry } from "../types";
 import { fetchNodesPerCountry } from "../api";
 import { SkeletonBlock, SkeletonStatRow } from "./Skeleton";
