@@ -18,7 +18,7 @@ function VolumeChart({ data }: { data: MonthlyVolumeEntry[] }) {
   const minLog = Math.min(...logVals);
   const maxLog = Math.max(...logVals);
   function barH(val: number) {
-    return ((Math.log10(val) - minLog) / (maxLog - minLog)) * plotH;
+    return Math.max(0, ((Math.log10(val) - minLog) / (maxLog - minLog)) * plotH);
   }
 
   // Animate bars growing from baseline on mount
@@ -45,7 +45,7 @@ function VolumeChart({ data }: { data: MonthlyVolumeEntry[] }) {
 
   // Dashed trend line connecting bar tops
   const trendPoints = data.map((d, i) => {
-    const h = barH(d.volume_usd) * animT;
+    const h = Math.max(0, barH(d.volume_usd) * animT);
     const cx = PAD_L + slotW * i + slotW / 2;
     return `${cx.toFixed(1)},${(baseline - h).toFixed(1)}`;
   }).join(" ");
@@ -67,7 +67,7 @@ function VolumeChart({ data }: { data: MonthlyVolumeEntry[] }) {
         stroke="#2a0c08" strokeWidth={1} />
 
       {data.map((entry, i) => {
-        const h = barH(entry.volume_usd) * animT;
+        const h = Math.max(0, barH(entry.volume_usd) * animT);
         const cx = PAD_L + slotW * i + slotW / 2;
         const bx = cx - BAR_W / 2;
         const by = baseline - h;

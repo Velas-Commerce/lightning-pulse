@@ -4,7 +4,6 @@ import type { NodesPerCountry } from "../types";
 import { fetchNodesPerCountry } from "../api";
 import { SkeletonBlock, SkeletonStatRow } from "./Skeleton";
 
-const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 const TOOLTIP_W = 170;
 
 function getColor(count: number, maxCount: number): string {
@@ -20,9 +19,15 @@ type Tooltip = { name: string; count: number; x: number; y: number } | null;
 
 function NodesPerCountryList({ refreshKey }: { refreshKey?: number }) {
   const [nodes_per_country, setNodesPerCountry] = useState<NodesPerCountry[] | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [geoData, setGeoData] = useState<any>(null);
   const [tooltip, setTooltip] = useState<Tooltip>(null);
   const [flash, setFlash] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch("/countries-110m.json").then((r) => r.json()).then(setGeoData);
+  }, []);
 
   useEffect(() => {
     fetchNodesPerCountry().then((data) => {
@@ -31,7 +36,7 @@ function NodesPerCountryList({ refreshKey }: { refreshKey?: number }) {
     });
   }, [refreshKey]);
 
-  if (!nodes_per_country) {
+  if (!nodes_per_country || !geoData) {
     return (
       <div className="card map-card">
         <h2>Nodes by Country</h2>
@@ -79,7 +84,7 @@ function NodesPerCountryList({ refreshKey }: { refreshKey?: number }) {
           height={340}
           style={{ width: "100%", height: "auto" }}
         >
-          <Geographies geography={GEO_URL}>
+          <Geographies geography={geoData ?? ""}>
             {({ geographies }) =>
               geographies.map((geo) => {
                 const geoName: string = geo.properties.name?.toLowerCase() ?? "";
@@ -88,7 +93,7 @@ function NodesPerCountryList({ refreshKey }: { refreshKey?: number }) {
                 const fill = getColor(count, maxCount);
                 return (
                   <Geography
-                    key={geo.rsmKey}
+                    key={geo.rsmKey ?? geoName}
                     geography={geo}
                     fill={fill}
                     stroke="#2a0c08"
