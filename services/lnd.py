@@ -8,8 +8,8 @@ from models import GraphInfo
 
 load_dotenv()
 
-LND_URL = os.getenv("LND_URL") or ""
-MACAROON_HEX = os.getenv("LND_READONLY_MACAROON_HEX") or ""
+LND_URL = (os.getenv("LND_URL") or "").strip()
+MACAROON_HEX = (os.getenv("LND_READONLY_MACAROON_HEX") or "").strip()
 
 # Support two ways to supply the TLS cert:
 #   TLS_CERT_B64 — base64-encoded cert string (Railway / any env-var-only host)
