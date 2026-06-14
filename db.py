@@ -1,4 +1,5 @@
 import os
+import certifi
 from pymongo import AsyncMongoClient, ASCENDING
 
 _client: AsyncMongoClient | None = None
@@ -9,7 +10,7 @@ async def connect() -> None:
     if not uri:
         print("MONGODB_URI not set - history persistence disabled")
         return
-    _client = AsyncMongoClient(uri)
+    _client = AsyncMongoClient(uri, tlsCAFile=certifi.where())
     db = _client["lightning_dashboard"]
     for collection in ("network_metrics", "graph_info", "lightning_stats"):
         await db[collection].create_index([("recorded_at", ASCENDING)])
