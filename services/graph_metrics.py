@@ -1,7 +1,9 @@
 import asyncio
+import db
 from datetime import datetime, timezone
 from models import NetworkMetrics
-from services.lnd import _client, LND_URL
+from services.lnd import _client, LND_URL, get_graph_info
+from services.mempool import get_lightning_stats
 
 _cache: NetworkMetrics | None = None
 
@@ -116,6 +118,28 @@ def _compute(graph: dict) -> NetworkMetrics:
     )
 
 
+async def _persist_snapshot() -> None:
+    if _cache is None:
+        return
+    database = db.get_db()
+    if database is None:
+        return
+    now = datetime.now(timezone.utc)
+
+    nm_doc = _cache.model_dump()
+    nm_doc["recorded_at"] = now
+    await database["network_metrics"].insert_one(nm_doc)
+
+    gi_doc = (await get_graph_info()).model_dump()
+    gi_doc["recorded_at"] = now
+    await database["graph_info"].insert_one(gi_doc)
+
+    stats = await get_lightning_stats()
+    ls_doc = stats.latest.model_dump()
+    ls_doc["recorded_at"] = now
+    await database["lightning_stats"].insert_one(ls_doc)
+
+
 async def refresh_metrics() -> None:
     global _cache
     async with _client() as client:
@@ -123,6 +147,7 @@ async def refresh_metrics() -> None:
         response.raise_for_status()
         graph = response.json()
     _cache = _compute(graph)
+    await _persist_snapshot()
 
 
 async def refresh_loop() -> None:

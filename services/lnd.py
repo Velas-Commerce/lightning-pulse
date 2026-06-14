@@ -37,5 +37,5 @@ async def get_graph_info() -> GraphInfo:
         async with _client() as client:
             response = await client.get(f"{LND_URL}/v1/graph/info")
             response.raise_for_status()
-            _graph_info_cache["result"] = response.json()
+            _graph_info_cache["result"] = GraphInfo(**response.json())
     return _graph_info_cache["result"]
