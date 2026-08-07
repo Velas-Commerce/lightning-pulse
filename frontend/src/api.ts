@@ -44,3 +44,17 @@ export async function fetchVelocityStats() {
   const res = await fetch(`${BASE_URL}/lightning/velocity`);
   return res.json();
 }
+
+// Throws on non-OK — /history/* returns 503 when MongoDB is not configured
+export async function fetchLightningStatsHistory(days = 90) {
+  const res = await fetch(`${BASE_URL}/history/lightning-stats?days=${days}`);
+  if (!res.ok) throw new Error(`History unavailable (${res.status})`);
+  return res.json();
+}
+
+// Derived velocity series (capacity snapshots × historical BTC price); same 503 rule
+export async function fetchVelocityHistory(days = 90) {
+  const res = await fetch(`${BASE_URL}/history/velocity?days=${days}`);
+  if (!res.ok) throw new Error(`History unavailable (${res.status})`);
+  return res.json();
+}

@@ -36,6 +36,19 @@ export type LightningStatsResponse = {
   latest: LightningStats;
 };
 
+// One daily snapshot from GET /history/lightning-stats (LightningStats + recorded_at)
+export type LightningStatsHistoryEntry = LightningStats & {
+  recorded_at: string;
+};
+
+// One derived daily point from GET /history/velocity
+export type VelocityHistoryEntry = {
+  recorded_at: string;
+  velocity: number;
+  capacity_sats: number;
+  btc_price_usd: number;
+};
+
 export type NodesPerCountry = {
   name: Record<string, string>;
   iso: string;

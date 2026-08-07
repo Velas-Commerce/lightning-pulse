@@ -3,6 +3,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Query
 
 import db
+from models import VelocityHistoryEntry
+from services.velocity import get_velocity_history
 
 
 router = APIRouter(prefix="/history")
@@ -45,3 +47,11 @@ async def lightning_stats_history(days: int = Query(30, ge=1, le=365)):
         {"_id": 0}
     ).sort("recorded_at", 1)
     return await cursor.to_list(length=None)
+
+
+@router.get("/velocity", response_model=list[VelocityHistoryEntry])
+async def velocity_history(days: int = Query(30, ge=1, le=365)):
+    entries = await get_velocity_history(days)
+    if entries is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    return entries
