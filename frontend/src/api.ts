@@ -25,13 +25,17 @@ export async function fetchLargestNodes() {
   return res.json();
 }
 
+// Throws on non-OK — /node/* returns 503 while the LND node is unreachable
 export async function fetchGraphInfo() {
   const res = await fetch(`${BASE_URL}/node/graph-info`);
+  if (!res.ok) throw new Error(`LND unavailable (${res.status})`);
   return res.json();
 }
 
+// Throws on non-OK — 503 until the first metrics computation finishes
 export async function fetchNetworkMetrics() {
   const res = await fetch(`${BASE_URL}/node/network-metrics`);
+  if (!res.ok) throw new Error(`Network metrics unavailable (${res.status})`);
   return res.json();
 }
 
