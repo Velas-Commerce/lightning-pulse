@@ -919,6 +919,14 @@
   padding: 2rem 0.5rem;
 }
 
+/* Generic "data unavailable" note inside a card (e.g. LND node offline) */
+.card-empty {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 1rem 0.5rem;
+}
+
 /* ── INFO TOOLTIP ── */
 .info-tooltip-wrap {
   position: relative;

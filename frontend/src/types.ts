@@ -92,6 +92,11 @@ export type NetworkMetrics = {
   last_computed: string;
 };
 
+// One daily snapshot from GET /history/network-metrics (NetworkMetrics + recorded_at)
+export type NetworkMetricsHistoryEntry = NetworkMetrics & {
+  recorded_at: string;
+};
+
 export type MonthlyVolumeEntry = {
   date: string;
   volume_usd: number;

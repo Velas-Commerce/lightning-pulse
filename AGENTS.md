@@ -28,7 +28,7 @@ frontend/
   src/App.tsx            Dashboard grid; 60-second refresh via a `refreshKey` prop passed to all cards
   src/api.ts             One fetch function per backend endpoint; base URL from VITE_API_URL
   src/types.ts           TypeScript types mirroring backend models.py
-  src/components/        One card component per dashboard section
+  src/components/        One card component per dashboard section; TrendChart.tsx is the shared SVG trend chart (series helpers live in src/utils.ts)
   public/countries-110m.json   TopoJSON for the world-map component
   railway.json           Railway deployment config for the frontend
 ```
@@ -38,8 +38,9 @@ frontend/
 - **Layering convention:** routers contain no logic — they call a service function and declare a `response_model` from `models.py`. Services handle HTTP calls to LND/Mempool.space and all computation.
 - **Caching:** `cachetools.TTLCache(maxsize=1, ttl=N)` per upstream dataset in `services/mempool.py` and `services/lnd.py` (TTLs of 30 s – 5 min). Do not add per-request fetches without going through these caches — the frontend polls every 60 s and would hammer the upstream APIs.
 - **Background metrics:** `services/graph_metrics.py` runs a `refresh_loop()` started in the FastAPI lifespan. Every 24 h it fetches the full LND graph (~large payload, 120 s timeout), computes `NetworkMetrics` (pulse score, Gini coefficient, top-10/top-100 centralization, median fee rate, median node degree), keeps the result in a module-level `_cache`, and persists a snapshot to MongoDB if connected. `/node/network-metrics` serves only this cache and returns 503 until the first computation finishes.
+- **LND offline behavior:** `/node/graph-info` returns 503 when the node is unreachable (`routers/lnd.py` translates `httpx` errors). The frontend `/node/*` fetchers throw on non-OK, and the affected cards degrade instead of crashing — Network Topology falls back to mempool.space-only data, Network Metrics shows an unavailable note.
 - **Pulse score formula:** equity 35 % + decentralization 35 % + fee health 30 %. The scoring logic is duplicated on the frontend in `frontend/src/components/NetworkMetricsList.tsx` (`calcComponents`) — **keep both implementations in sync** when changing it.
-- **History:** `routers/history.py` exposes `/history/network-metrics`, `/history/graph-info`, `/history/lightning-stats` (`?days=1..365`, default 30), reading from MongoDB collections `network_metrics`, `graph_info`, `lightning_stats`. `/history/velocity` derives velocity per snapshot by joining `lightning_stats` capacity with mempool's hourly historical prices (`services/velocity.py`), holding the latest hardcoded monthly-volume estimate constant — nothing extra is persisted. All history endpoints return 503 when the database is not configured.
+- **History:** `routers/history.py` exposes `/history/network-metrics`, `/history/graph-info`, `/history/lightning-stats` (`?days=1..365`, default 30), reading from MongoDB collections `network_metrics`, `graph_info`, `lightning_stats`. `/history/velocity` derives velocity per snapshot by joining `lightning_stats` capacity with mempool's hourly historical prices (`services/velocity.py`), holding the latest hardcoded monthly-volume estimate constant — nothing extra is persisted. All history endpoints return 503 when the database is not configured. The Velocity and Network Metrics cards each have a trend view (Gauge/Current ↔ Trend toggle) built on these endpoints, sharing `TrendChart.tsx`; the toggle hides itself when history 503s.
 - **TLS cert handling** (`services/lnd.py`): `TLS_CERT_B64` (base64 cert, for env-var-only hosts) takes priority; otherwise `LND_TLS_CERT_PATH` (default `tls.cert`) is used. `LND_URL` and `LND_READONLY_MACAROON_HEX` are stripped of whitespace on load.
 
 ### Environment variables

@@ -1,8 +1,11 @@
-import { useState, useEffect } from "react";
-import type { NetworkMetrics } from "../types";
-import { fetchNetworkMetrics } from "../api";
+import { useState, useEffect, useMemo } from "react";
+import type { NetworkMetrics, NetworkMetricsHistoryEntry } from "../types";
+import { fetchNetworkMetrics, fetchNetworkMetricsHistory } from "../api";
+import { dailyValues, movingAverage, fmtDate } from "../utils";
+import type { TrendPoint } from "../utils";
+import { TrendChart } from "./TrendChart";
 import InfoTooltip from "./InfoTooltip";
-import { SkeletonCircle, SkeletonStatRow } from "./Skeleton";
+import { SkeletonCircle, SkeletonStatRow, SkeletonBlock } from "./Skeleton";
 
 function NetworkMetricsSkeleton() {
   return (
@@ -234,22 +237,189 @@ function LorenzCurve({ gini }: { gini: number }) {
   );
 }
 
+// ── Trend view ────────────────────────────────────────────────────────────────
+// Trackable series from the daily network_metrics snapshots. Pulse is the headline
+// health number; Gini / Top 10 tell the (de)centralization story; fee rate shows
+// the routing market direction. Deltas are absolute (points), not percent change.
+type MetricsSeriesKey = "pulse" | "gini" | "top10" | "fee";
+
+const METRICS_SERIES: {
+  key: MetricsSeriesKey;
+  label: string;
+  value: (d: NetworkMetricsHistoryEntry) => number;
+  format: (v: number) => string;
+  formatDelta: (v: number) => string;
+  formatTick: (v: number) => string;
+  caption: string;
+}[] = [
+  {
+    key: "pulse",
+    label: "Pulse",
+    value: (d) => d.pulse_score,
+    format: (v) => `${Math.round(v)} / 100`,
+    formatDelta: (v) => `${Math.round(v)} pts`,
+    formatTick: (v) => `${Math.round(v)}`,
+    caption: "Pulse score · 7-day moving average",
+  },
+  {
+    key: "gini",
+    label: "Gini",
+    value: (d) => d.gini_coefficient,
+    format: (v) => v.toFixed(3),
+    formatDelta: (v) => v.toFixed(3),
+    formatTick: (v) => v.toFixed(2),
+    caption: "Gini coefficient (capacity equality) · 7-day moving average",
+  },
+  {
+    key: "top10",
+    label: "Top 10",
+    value: (d) => d.top10_centralization * 100,
+    format: (v) => `${v.toFixed(1)}%`,
+    formatDelta: (v) => `${v.toFixed(1)}%`,
+    formatTick: (v) => `${Math.round(v)}%`,
+    caption: "Share of capacity held by the top 10 nodes · 7-day moving average",
+  },
+  {
+    key: "fee",
+    label: "Fee Rate",
+    value: (d) => d.median_fee_rate,
+    format: (v) => `${Math.round(v)} ppm`,
+    formatDelta: (v) => `${Math.round(v)} ppm`,
+    formatTick: (v) => `${Math.round(v)}`,
+    caption: "Median routing fee rate · 7-day moving average",
+  },
+];
+
+function MetricsTrendView({ history }: { history: NetworkMetricsHistoryEntry[] | null }) {
+  const [hovered, setHovered] = useState<TrendPoint | null>(null);
+  const [seriesKey, setSeriesKey] = useState<MetricsSeriesKey>("pulse");
+
+  const ptsBySeries = useMemo(() => {
+    const out = {} as Record<MetricsSeriesKey, TrendPoint[]>;
+    for (const s of METRICS_SERIES) {
+      out[s.key] = movingAverage(dailyValues((history ?? []).map((d) => ({
+        recorded_at: d.recorded_at,
+        value: s.value(d),
+      }))));
+    }
+    return out;
+  }, [history]);
+
+  if (!history) {
+    return (
+      <div className="velocity-body">
+        <SkeletonBlock height={150} />
+      </div>
+    );
+  }
+
+  const series = METRICS_SERIES.find((s) => s.key === seriesKey) ?? METRICS_SERIES[0];
+  const pts = ptsBySeries[series.key];
+
+  if (pts.length < 2) {
+    return (
+      <div className="velocity-body">
+        <p className="velocity-trend-empty">
+          Collecting daily snapshots — the trend chart appears once a few days of data exist.
+        </p>
+      </div>
+    );
+  }
+
+  const first = pts[0];
+  const latest = pts[pts.length - 1];
+  const delta = latest.ma - first.ma;
+  const spanDays = Math.max(1, Math.round((latest.t - first.t) / 86_400_000));
+
+  function pickSeries(key: MetricsSeriesKey) {
+    setSeriesKey(key);
+    setHovered(null);
+  }
+
+  return (
+    <div className="velocity-body">
+      <div className="velocity-trend-header">
+        <span className="vt-current">{series.format(hovered ? hovered.ma : latest.ma)}</span>
+        {hovered ? (
+          <span className="vt-delta">{fmtDate(hovered.t)}</span>
+        ) : (
+          <span className={`vt-delta${delta >= 0 ? " vt-delta--up" : " vt-delta--down"}`}>
+            {delta >= 0 ? "+" : "-"}{series.formatDelta(Math.abs(delta))} · {spanDays}d
+          </span>
+        )}
+      </div>
+      <div className="velocity-series-row">
+        <span className="velocity-toggle">
+          {METRICS_SERIES.map((s) => (
+            <button
+              key={s.key}
+              className={`vt-btn${s.key === series.key ? " vt-btn--active" : ""}`}
+              onClick={() => pickSeries(s.key)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </span>
+      </div>
+      <TrendChart pts={pts} hovered={hovered} onHover={setHovered} formatTick={series.formatTick} />
+      <span className="velocity-trend-caption">{series.caption}</span>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 function NetworkMetricsList({ refreshKey }: { refreshKey?: number }) {
   const [network_metrics, setNetworkMetrics] = useState<NetworkMetrics | null>(null);
   const [flash, setFlash] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
+  const [view, setView] = useState<"current" | "trend">("current");
+  const [history, setHistory] = useState<NetworkMetricsHistoryEntry[] | null>(null);
+  const [historyAvailable, setHistoryAvailable] = useState(true);
 
   useEffect(() => {
-    fetchNetworkMetrics().then((data) => {
-      setNetworkMetrics(data);
-      setTimeout(() => setFlash(true), 1700);
-    });
+    fetchNetworkMetrics()
+      .then((data) => {
+        setNetworkMetrics(data);
+        setTimeout(() => setFlash(true), 1700);
+      })
+      .catch(() => setUnavailable(true)); // 503 — node offline or metrics not yet computed
   }, [refreshKey]);
+
+  // History only changes with the 24h snapshot cycle — fetch once on mount, not on every refresh.
+  useEffect(() => {
+    fetchNetworkMetricsHistory(90)
+      .then((data) => setHistory(data))
+      .catch(() => {
+        // MongoDB not configured (503) — fall back to current-only, no toggle
+        setHistoryAvailable(false);
+        setView("current");
+      });
+  }, []);
 
   return (
     <div className={`card${flash ? " card--flash" : ""}`}>
-      <h2>Network Metrics</h2>
-      {network_metrics ? (
+      <h2>
+        <span>Network Metrics</span>
+        {historyAvailable && (
+          <span className="velocity-toggle">
+            <button
+              className={`vt-btn${view === "current" ? " vt-btn--active" : ""}`}
+              onClick={() => setView("current")}
+            >
+              Current
+            </button>
+            <button
+              className={`vt-btn${view === "trend" ? " vt-btn--active" : ""}`}
+              onClick={() => setView("trend")}
+            >
+              Trend
+            </button>
+          </span>
+        )}
+      </h2>
+      {view === "trend" ? (
+        <MetricsTrendView history={history} />
+      ) : network_metrics ? (
         <>
           {/* ── Featured visuals ── */}
           <div className="nm-featured">
@@ -310,6 +480,10 @@ function NetworkMetricsList({ refreshKey }: { refreshKey?: number }) {
           <p><span>Median Node Degree</span><span className="val">{network_metrics.median_node_degree.toLocaleString()}</span></p>
           <p><span>Last Computed</span><span className="val">{network_metrics.last_computed}</span></p>
         </>
+      ) : unavailable ? (
+        <p className="card-empty">
+          Node metrics unavailable — our LND node is unreachable or has not computed them yet.
+        </p>
       ) : (
         <NetworkMetricsSkeleton />
       )}

@@ -62,3 +62,10 @@ export async function fetchVelocityHistory(days = 90) {
   if (!res.ok) throw new Error(`History unavailable (${res.status})`);
   return res.json();
 }
+
+// Daily network-metrics snapshots (pulse, gini, centralization, fees); same 503 rule
+export async function fetchNetworkMetricsHistory(days = 90) {
+  const res = await fetch(`${BASE_URL}/history/network-metrics?days=${days}`);
+  if (!res.ok) throw new Error(`History unavailable (${res.status})`);
+  return res.json();
+}
