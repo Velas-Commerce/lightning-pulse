@@ -18,7 +18,7 @@ from models import (
     ReportVerdict,
     SlowIndex,
 )
-from services.velocity import get_velocity_history
+from services.velocity import capacity_by_observed_day, get_velocity_history
 
 BASELINE_WINDOW_DAYS = 90
 
@@ -188,48 +188,65 @@ def build_verdict(
 
 
 async def _slow_indices(database, window_days: int) -> list[SlowIndex]:
-    """Percentile of today's value within the window, for each slow-moving index.
+    """Percentile of the latest value within the window, for each slow-moving index.
 
-    Gini and top-10 share come straight from the persisted network_metrics
-    snapshots; capacity from lightning_stats; velocity is derived (and inherits
-    that derivation's constant-volume caveat).
+    Gini and top-10 share come from our own node's persisted network_metrics and are
+    current. Capacity and velocity come from mempool.space, which serves stale rows
+    from several cache nodes — both are therefore keyed on the upstream `added` date
+    and carry how far behind they are, rather than posing as today's numbers.
     """
     since = datetime.now(timezone.utc) - timedelta(days=window_days)
+    today = datetime.now(timezone.utc).date()
 
     metrics = await database["network_metrics"].find(
         {"recorded_at": {"$gte": since}},
-        {"_id": 0, "gini_coefficient": 1, "top10_centralization": 1},
+        {"_id": 0, "recorded_at": 1, "gini_coefficient": 1, "top10_centralization": 1},
     ).sort("recorded_at", 1).to_list(length=None)
+
+    # One per UTC day, last wins — restarts persisted several before the upsert fix.
+    metrics_by_day = {str(d["recorded_at"])[:10]: d for d in metrics}
+    metric_days = [metrics_by_day[k] for k in sorted(metrics_by_day)]
+    metrics_as_of = max(metrics_by_day, default=today.isoformat())
 
     stats = await database["lightning_stats"].find(
-        {"recorded_at": {"$gte": since}},
-        {"_id": 0, "total_capacity": 1},
-    ).sort("recorded_at", 1).to_list(length=None)
+        {}, {"_id": 0, "added": 1, "total_capacity": 1},
+    ).to_list(length=None)
+    cutoff = since.strftime("%Y-%m-%d")
+    capacity_obs = [(a, c) for a, c in capacity_by_observed_day(stats) if a >= cutoff]
+    capacity_as_of = capacity_obs[-1][0] if capacity_obs else today.isoformat()
 
     velocity_entries = await get_velocity_history(window_days) or []
+    velocity_as_of = (
+        velocity_entries[-1].recorded_at[:10] if velocity_entries else today.isoformat()
+    )
 
-    sources: list[tuple[str, str, list[float]]] = [
+    sources: list[tuple[str, str, list[float], str]] = [
         ("gini", "Gini coefficient",
-         [float(d["gini_coefficient"]) for d in metrics if d.get("gini_coefficient")]),
+         [float(d["gini_coefficient"]) for d in metric_days if d.get("gini_coefficient")],
+         metrics_as_of),
         ("top10", "Top-10 share",
-         [float(d["top10_centralization"]) for d in metrics if d.get("top10_centralization")]),
+         [float(d["top10_centralization"]) for d in metric_days if d.get("top10_centralization")],
+         metrics_as_of),
         ("velocity", "Velocity",
-         [e.velocity for e in velocity_entries]),
+         [e.velocity for e in velocity_entries], velocity_as_of),
         ("capacity", "Capacity",
-         [float(d["total_capacity"]) for d in stats if d.get("total_capacity")]),
+         [float(c) for _, c in capacity_obs], capacity_as_of),
     ]
 
     indices: list[SlowIndex] = []
-    for key, label, series in sources:
+    for key, label, series, as_of in sources:
         if not series:
             continue
         latest = series[-1]
+        stale_days = max(0, (today - datetime.fromisoformat(as_of).date()).days)
         indices.append(SlowIndex(
             key=key,
             label=label,
             value=latest,
             percentile=percentile_of(latest, series),
             series=series,
+            as_of=as_of,
+            stale_days=stale_days,
         ))
     return indices
 

@@ -142,6 +142,10 @@ class SlowIndex(BaseModel):
     value: float
     percentile: int       # position within the window, never a daily delta
     series: list[float]
+    # Date the value actually describes. Mempool-derived indices run weeks behind
+    # our own, so the card labels them rather than implying they are current.
+    as_of: str
+    stale_days: int
 
 
 class ReportVerdict(BaseModel):
