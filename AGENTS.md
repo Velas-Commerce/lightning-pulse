@@ -100,10 +100,23 @@ If you add tests, there is no existing convention to match — choose pytest for
 
 ## Deployment
 
-Designed as two separate services (both currently target Railway; `frontend/railway.json` builds with `npm run build` and starts with `npm start`):
+Production is **two separate Railway services**, both watching `main`:
 
-- **Backend:** any Python host. Set all backend env vars in the host dashboard, using `TLS_CERT_B64` instead of a cert file.
-- **Frontend:** any static host. Set `VITE_API_URL` before `npm run build` (it is baked in at build time).
+- **Backend** (service `lightning-pulse`) — Python host running `uvicorn main:app --host 0.0.0.0 --port $PORT`. There is no committed backend deploy config; the start command and all env vars live in the Railway dashboard. Use `TLS_CERT_B64` rather than a cert file.
+- **Frontend** — served at `pulse.velascommerce.com`. `frontend/railway.json` builds with `npm run build` and starts with `npm start` (`serve dist -p $PORT`).
+
+**A push to `origin/main` deploys both services.** Treat it as a production deploy, not just source control.
+
+Deploy ordering is not controllable via push, and the frontend always wins the race (a ~3 s Vite build versus pip install → uvicorn → a full LND graph fetch with a 120 s timeout). This means a brief window of new-frontend-against-old-backend: a missing `/history/*` endpoint 404s, the fetcher throws, and the affected trend toggle hides itself — degraded, not broken. To eliminate the window, pause the frontend service, push, wait for the backend to come up, then resume it.
+
+Expect `/node/network-metrics` to return 503 for up to 120 s after every backend deploy while the first `refresh_metrics()` runs; `/health` reports `metrics_ready: false` until it finishes. The Network Metrics card renders an unavailable note during this window by design.
+
+Env vars exist only in the Railway dashboards — nothing in the repo records the production values:
+
+- Backend: `MONGODB_URI` is the easiest to lose. Without it `/history/*` returns 503 and **every** trend toggle silently disappears. Also confirm `CORS_ORIGINS` names the production frontend origin rather than the `http://localhost:5173` default.
+- Frontend: `VITE_API_URL` is baked in at build time, so it must be set *before* Railway runs the build. Changing the backend URL requires a rebuild, not a restart.
+
+There is no CI. `npm run build` (which runs `tsc -b`) is the only type gate that exists — run it locally before merging to `main`.
 
 ## Security Considerations
 
