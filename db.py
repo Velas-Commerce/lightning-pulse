@@ -14,6 +14,13 @@ async def connect() -> None:
     db = _client["lightning_dashboard"]
     for collection in ("network_metrics", "graph_info", "lightning_stats"):
         await db[collection].create_index([("recorded_at", ASCENDING)])
+        # Snapshots are upserted by UTC date so a restart overwrites rather than
+        # duplicating. Not unique: documents written before this field existed
+        # have no date, and several nulls would violate a unique index.
+        await db[collection].create_index([("date", ASCENDING)])
+
+    # One document per UTC day, so uniqueness is the invariant worth enforcing.
+    await db["daily_flow"].create_index([("date", ASCENDING)], unique=True)
 
 
 async def disconnect() -> None:

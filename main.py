@@ -10,6 +10,7 @@ from routers.history import router as history_router
 from routers.mempool import router as mempool_router
 from routers.growth_stats import router as river_router
 from routers.lnd import router as lnd_router
+from routers.report import router as report_router
 from services.graph_metrics import refresh_loop
 
 
@@ -40,3 +41,4 @@ app.include_router(history_router)
 app.include_router(mempool_router)
 app.include_router(river_router)
 app.include_router(lnd_router)
+app.include_router(report_router)

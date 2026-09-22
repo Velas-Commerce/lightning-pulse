@@ -1,9 +1,16 @@
 import asyncio
 import db
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from models import NetworkMetrics
+from services import channel_flow
 from services.lnd import _client, LND_URL, get_graph_info
-from services.mempool import get_lightning_stats
+from services.mempool import get_chain_tip, get_lightning_stats
+
+# The snapshot runs at a fixed UTC time rather than every 24 h from process start,
+# so restarts and deploys can't drift the sampling schedule the baselines rest on.
+# A few minutes past midnight lets upstream sources settle on the day boundary.
+SNAPSHOT_HOUR_UTC = 0
+SNAPSHOT_MINUTE_UTC = 15
 
 _cache: NetworkMetrics | None = None
 
@@ -125,19 +132,66 @@ async def _persist_snapshot() -> None:
     if database is None:
         return
     now = datetime.now(timezone.utc)
+    day = now.strftime("%Y-%m-%d")
 
-    nm_doc = _cache.model_dump()
-    nm_doc["recorded_at"] = now
-    await database["network_metrics"].insert_one(nm_doc)
+    documents = {
+        "network_metrics": _cache.model_dump(),
+        "graph_info": (await get_graph_info()).model_dump(),
+        "lightning_stats": (await get_lightning_stats()).latest.model_dump(),
+    }
+    for collection, doc in documents.items():
+        doc["recorded_at"] = now
+        doc["date"] = day
+        # Upsert by UTC date: a restart refreshes the day's snapshot instead of
+        # appending a second one. Documents written before `date` existed have no
+        # date field, so they never match and are left untouched.
+        await database[collection].update_one(
+            {"date": day}, {"$set": doc}, upsert=True
+        )
 
-    gi_doc = (await get_graph_info()).model_dump()
-    gi_doc["recorded_at"] = now
-    await database["graph_info"].insert_one(gi_doc)
 
-    stats = await get_lightning_stats()
-    ls_doc = stats.latest.model_dump()
-    ls_doc["recorded_at"] = now
-    await database["lightning_stats"].insert_one(ls_doc)
+async def _persist_flow(graph: dict) -> None:
+    """Record completed days of channel opens, decoded from short channel IDs.
+
+    Today is deliberately skipped — the card reports a finished day, not a partial
+    one. Days whose blocks all carry exact timestamps are refreshed on every run;
+    older days, whose times are interpolated and so cannot honestly be binned to
+    the hour, are only filled in if missing. That makes a missed run self-healing
+    without ever overwriting hourly detail with a coarser version of the same day.
+    """
+    database = db.get_db()
+    if database is None:
+        return
+
+    events = channel_flow.open_events(graph.get("edges", []))
+    if not events:
+        return
+
+    tip = max(height for height, _ in events)
+    try:
+        tip = max(tip, await get_chain_tip())
+    except Exception:
+        pass  # our own highest channel is a good enough stand-in
+
+    # Only the recent window is needed here; history comes from the backfill script.
+    lookback = channel_flow.EXACT_BLOCKS + channel_flow.ANCHOR_SPACING
+    floor = tip - lookback
+    clock = await channel_flow.build_clock(floor, tip)
+    recent = [(h, c) for h, c in events if h >= floor]
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    for date, doc in channel_flow.bucket_by_day(recent, clock).items():
+        if date >= today:
+            continue
+        exact = doc["hourly"] is not None
+        doc.pop("date")  # supplied by the filter
+        doc["is_backfilled"] = not exact
+        doc["recorded_at"] = datetime.now(timezone.utc)
+        await database["daily_flow"].update_one(
+            {"date": date},
+            {"$set": doc} if exact else {"$setOnInsert": doc},
+            upsert=True,
+        )
 
 
 async def refresh_metrics() -> None:
@@ -148,6 +202,21 @@ async def refresh_metrics() -> None:
         graph = response.json()
     _cache = _compute(graph)
     await _persist_snapshot()
+    try:
+        await _persist_flow(graph)
+    except Exception as e:
+        # Flow needs upstream block times; a failure there must not cost us the
+        # metrics snapshot, which is already safely written above.
+        print(f"daily_flow persist failed: {e}")
+
+
+def _seconds_until_next_run(now: datetime) -> float:
+    target = now.replace(
+        hour=SNAPSHOT_HOUR_UTC, minute=SNAPSHOT_MINUTE_UTC, second=0, microsecond=0
+    )
+    if target <= now:
+        target += timedelta(days=1)
+    return (target - now).total_seconds()
 
 
 async def refresh_loop() -> None:
@@ -156,4 +225,4 @@ async def refresh_loop() -> None:
             await refresh_metrics()
         except Exception as e:
             print(f"graph_metrics refresh failed: {e}")
-        await asyncio.sleep(86400)  # 24 hours
+        await asyncio.sleep(_seconds_until_next_run(datetime.now(timezone.utc)))
