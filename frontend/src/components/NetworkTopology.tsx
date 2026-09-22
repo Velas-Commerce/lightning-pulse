@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import type { LightningStatsResponse, GraphInfo } from "../types";
+import type { LightningStatsResponse, LightningStats, GraphInfo } from "../types";
 import { fetchLightningStats, fetchGraphInfo } from "../api";
 import { satsToBtc } from "../utils";
 import InfoTooltip from "./InfoTooltip";
@@ -16,17 +16,47 @@ function Delta({ lnd, mempool }: { lnd: number; mempool: number }) {
   return <span className={cls}>{pct.toFixed(0)}%</span>;
 }
 
+// Mempool.space-sourced rows — also rendered on their own when the LND node is offline
+function MempoolOnlySection({ s }: { s: LightningStats }) {
+  return (
+    <>
+      <p className="section-label">
+        Mempool.space only
+        <InfoTooltip>
+          <span className="info-tooltip-title">Mempool.space Metrics</span>
+          <p className="info-tooltip-body">
+            <strong>Avg / Med Fee Rate</strong> — routing fees in parts-per-million (ppm). A fee of 1,000 ppm means 0.1% of the payment amount. Median is more representative than average as it ignores outliers.<br /><br />
+            <strong>Med Capacity</strong> — median channel size across the network. Larger channels can route bigger payments without needing to split them.<br /><br />
+            <strong>Tor Nodes</strong> — nodes using the Tor network for privacy. Higher Tor usage reflects the network's censorship-resistance.<br /><br />
+            <strong>Clearnet Nodes</strong> — nodes with public IP addresses, generally faster and more reliable for routing.<br /><br />
+            <strong>Unannounced</strong> — private nodes not broadcasting their existence, used for direct payments rather than routing.
+          </p>
+        </InfoTooltip>
+      </p>
+      <p><span>Avg Fee Rate</span><span className="val">{s.avg_fee_rate.toLocaleString()} ppm</span></p>
+      <p><span>Med Fee Rate</span><span className="val">{s.med_fee_rate.toLocaleString()} ppm</span></p>
+      <p><span>Med Capacity</span><span className="val">{s.med_capacity.toLocaleString()} sats</span></p>
+      <p><span>Tor Nodes</span><span className="val">{s.tor_nodes.toLocaleString()}</span></p>
+      <p><span>Clearnet Nodes</span><span className="val">{s.clearnet_nodes.toLocaleString()}</span></p>
+      <p><span>Unannounced</span><span className="val">{s.unannounced_nodes.toLocaleString()}</span></p>
+    </>
+  );
+}
+
 function NetworkTopology({ refreshKey }: { refreshKey?: number }) {
   const [ls, setLs] = useState<LightningStatsResponse | null>(null);
   const [gi, setGi] = useState<GraphInfo | null>(null);
+  const [giError, setGiError] = useState(false);
   const [flash, setFlash] = useState(false);
 
   useEffect(() => {
     fetchLightningStats().then(setLs);
-    fetchGraphInfo().then((data) => {
-      setGi(data);
-      setFlash(true);
-    });
+    fetchGraphInfo()
+      .then((data) => {
+        setGi(data);
+        setFlash(true);
+      })
+      .catch(() => setGiError(true)); // 503 — node offline; degrade to mempool-only view
   }, [refreshKey]);
 
   const s = ls?.latest;
@@ -118,25 +148,15 @@ function NetworkTopology({ refreshKey }: { refreshKey?: number }) {
           <p><span>Zombie Channels</span><span className="val">{Number(gi.num_zombie_chans).toLocaleString()}</span></p>
 
           {/* ── Mempool-only metrics ──────────────────────── */}
-          <p className="section-label">
-            Mempool.space only
-            <InfoTooltip>
-              <span className="info-tooltip-title">Mempool.space Metrics</span>
-              <p className="info-tooltip-body">
-                <strong>Avg / Med Fee Rate</strong> — routing fees in parts-per-million (ppm). A fee of 1,000 ppm means 0.1% of the payment amount. Median is more representative than average as it ignores outliers.<br /><br />
-                <strong>Med Capacity</strong> — median channel size across the network. Larger channels can route bigger payments without needing to split them.<br /><br />
-                <strong>Tor Nodes</strong> — nodes using the Tor network for privacy. Higher Tor usage reflects the network's censorship-resistance.<br /><br />
-                <strong>Clearnet Nodes</strong> — nodes with public IP addresses, generally faster and more reliable for routing.<br /><br />
-                <strong>Unannounced</strong> — private nodes not broadcasting their existence, used for direct payments rather than routing.
-              </p>
-            </InfoTooltip>
+          <MempoolOnlySection s={s} />
+        </>
+      ) : s && giError ? (
+        <>
+          {/* LND offline — keep serving the mempool.space-sourced metrics */}
+          <p className="card-empty">
+            Our LND node is unreachable — showing mempool.space data only.
           </p>
-          <p><span>Avg Fee Rate</span><span className="val">{s.avg_fee_rate.toLocaleString()} ppm</span></p>
-          <p><span>Med Fee Rate</span><span className="val">{s.med_fee_rate.toLocaleString()} ppm</span></p>
-          <p><span>Med Capacity</span><span className="val">{s.med_capacity.toLocaleString()} sats</span></p>
-          <p><span>Tor Nodes</span><span className="val">{s.tor_nodes.toLocaleString()}</span></p>
-          <p><span>Clearnet Nodes</span><span className="val">{s.clearnet_nodes.toLocaleString()}</span></p>
-          <p><span>Unannounced</span><span className="val">{s.unannounced_nodes.toLocaleString()}</span></p>
+          <MempoolOnlySection s={s} />
         </>
       ) : (
         <>

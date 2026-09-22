@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
-import type { LiquidityVelocity } from "../types";
-import { fetchVelocityStats } from "../api";
-import { satsToBtc } from "../utils";
+import { useState, useEffect, useMemo } from "react";
+import type { LiquidityVelocity, LightningStatsHistoryEntry, VelocityHistoryEntry } from "../types";
+import { fetchVelocityStats, fetchLightningStatsHistory, fetchVelocityHistory } from "../api";
+import { satsToBtc, dailyValues, movingAverage, fmtDate } from "../utils";
+import type { TrendPoint } from "../utils";
+import { TrendChart } from "./TrendChart";
 import InfoTooltip from "./InfoTooltip";
-import { SkeletonCircle, SkeletonStatRow } from "./Skeleton";
+import { SkeletonCircle, SkeletonStatRow, SkeletonBlock } from "./Skeleton";
 
 function VelocitySkeleton() {
   return (
@@ -165,13 +167,132 @@ function VelocityGauge({ velocity, onDone }: { velocity: number; onDone?: () => 
   );
 }
 
+const SATS_PER_BTC = 100_000_000;
+
+function TrendView({ history, velHistory }: {
+  history: LightningStatsHistoryEntry[] | null;
+  velHistory: VelocityHistoryEntry[] | null;
+}) {
+  const [hovered, setHovered] = useState<TrendPoint | null>(null);
+  const [series, setSeries] = useState<"capacity" | "velocity">("capacity");
+
+  const capPts = useMemo(
+    () => movingAverage(dailyValues((history ?? []).map((d) => ({
+      recorded_at: d.recorded_at,
+      value: d.total_capacity / SATS_PER_BTC,
+    })))),
+    [history]
+  );
+  const velPts = useMemo(
+    () => movingAverage(dailyValues((velHistory ?? []).map((d) => ({
+      recorded_at: d.recorded_at,
+      value: d.velocity,
+    })))),
+    [velHistory]
+  );
+
+  if (!history) {
+    return (
+      <div className="velocity-body">
+        <SkeletonBlock height={150} />
+      </div>
+    );
+  }
+  if (capPts.length < 2) {
+    return (
+      <div className="velocity-body">
+        <p className="velocity-trend-empty">
+          Collecting daily snapshots — the trend chart appears once a few days of data exist.
+        </p>
+      </div>
+    );
+  }
+
+  const hasVelocity = velPts.length >= 2;
+  const isCap = series === "capacity" || !hasVelocity;
+  const pts = isCap ? capPts : velPts;
+
+  const first = pts[0];
+  const latest = pts[pts.length - 1];
+  const deltaPct = ((latest.ma - first.ma) / first.ma) * 100;
+  const spanDays = Math.max(1, Math.round((latest.t - first.t) / 86_400_000));
+
+  const formatValue = isCap
+    ? (v: number) => satsToBtc(Math.round(v * SATS_PER_BTC))
+    : (v: number) => `${v.toFixed(2)} turns/mo`;
+  const formatTick = isCap
+    ? (v: number) => Math.round(v).toLocaleString()
+    : (v: number) => v.toFixed(2).replace(/\.?0+$/, "");
+  const caption = isCap
+    ? "Total network capacity · 7-day moving average"
+    : "Monthly volume ÷ capacity · 7-day moving average";
+
+  function pickSeries(s: "capacity" | "velocity") {
+    setSeries(s);
+    setHovered(null);
+  }
+
+  return (
+    <div className="velocity-body">
+      <div className="velocity-trend-header">
+        <span className="vt-current">{formatValue(hovered ? hovered.ma : latest.ma)}</span>
+        {hovered ? (
+          <span className="vt-delta">{fmtDate(hovered.t)}</span>
+        ) : (
+          <span className={`vt-delta${deltaPct >= 0 ? " vt-delta--up" : " vt-delta--down"}`}>
+            {deltaPct >= 0 ? "+" : ""}{deltaPct.toFixed(1)}% · {spanDays}d
+          </span>
+        )}
+      </div>
+      {hasVelocity && (
+        <div className="velocity-series-row">
+          <span className="velocity-toggle">
+            <button
+              className={`vt-btn${isCap ? " vt-btn--active" : ""}`}
+              onClick={() => pickSeries("capacity")}
+            >
+              Capacity
+            </button>
+            <button
+              className={`vt-btn${!isCap ? " vt-btn--active" : ""}`}
+              onClick={() => pickSeries("velocity")}
+            >
+              Velocity
+            </button>
+          </span>
+        </div>
+      )}
+      <TrendChart pts={pts} hovered={hovered} onHover={setHovered} formatTick={formatTick} />
+      <span className="velocity-trend-caption">{caption}</span>
+    </div>
+  );
+}
+
 function VelocityStats({ refreshKey }: { refreshKey?: number }) {
   const [velocity_stats, setVelocityStats] = useState<LiquidityVelocity | null>(null);
   const [flash, setFlash] = useState(false);
+  const [view, setView] = useState<"gauge" | "trend">("gauge");
+  const [history, setHistory] = useState<LightningStatsHistoryEntry[] | null>(null);
+  const [velHistory, setVelHistory] = useState<VelocityHistoryEntry[] | null>(null);
+  const [historyAvailable, setHistoryAvailable] = useState(true);
 
   useEffect(() => {
     fetchVelocityStats().then((data) => setVelocityStats(data));
   }, [refreshKey]);
+
+  // History only changes with the 24h snapshot cycle — fetch once on mount, not on every refresh.
+  useEffect(() => {
+    fetchLightningStatsHistory(90)
+      .then((data) => setHistory(data))
+      .catch(() => {
+        // MongoDB not configured (503) — fall back to gauge-only, no toggle
+        setHistoryAvailable(false);
+        setView("gauge");
+      });
+    fetchVelocityHistory(90)
+      .then((data) => setVelHistory(data))
+      .catch(() => setVelHistory([]));  // derived series unavailable — hide the Velocity option
+  }, []);
 
   function handleDone() {
     setFlash(true);
@@ -180,25 +301,48 @@ function VelocityStats({ refreshKey }: { refreshKey?: number }) {
   return (
     <div className={`card velocity-card${flash ? " card--flash" : ""}`}>
       <h2>
-        Liquidity Velocity
-        <InfoTooltip>
-          <span className="info-tooltip-title">What is Liquidity Velocity?</span>
-          <p className="info-tooltip-body">
-            Velocity measures <strong>how efficiently capital is being used</strong> — not just how much exists.
-            A high-capacity network with low velocity is like cash sitting idle in a vault.
-            <span className="info-tooltip-formula">Velocity = Monthly Volume ÷ Total Capacity</span>
-            A score of <strong>1.0</strong> means the entire network capacity is routed once per month.
-            At <strong>3.12</strong>, the Lightning Network is turning over its full capacity more than
-            3× every month — a strong indicator of active, efficient utilization.
-            <span className="info-tooltip-note">
-              ⚡ Capacity is sourced live from the Lightning Network. Monthly volume uses published
-              estimates from River &amp; Breez — exact figures are unknowable since Lightning
-              payments are private by design.
-            </span>
-          </p>
-        </InfoTooltip>
+        <span>
+          Liquidity Velocity
+          <InfoTooltip>
+            <span className="info-tooltip-title">What is Liquidity Velocity?</span>
+            <p className="info-tooltip-body">
+              Velocity measures <strong>how efficiently capital is being used</strong> — not just how much exists.
+              A high-capacity network with low velocity is like cash sitting idle in a vault.
+              <span className="info-tooltip-formula">Velocity = Monthly Volume ÷ Total Capacity</span>
+              A score of <strong>1.0</strong> means the entire network capacity is routed once per month.
+              At <strong>3.12</strong>, the Lightning Network is turning over its full capacity more than
+              3× every month — a strong indicator of active, efficient utilization.
+              <span className="info-tooltip-note">
+                ⚡ Capacity is sourced live from the Lightning Network. Monthly volume uses published
+                estimates from River &amp; Breez — exact figures are unknowable since Lightning
+                payments are private by design. The <strong>Trend</strong> view charts total network
+                capacity as a 7-day moving average of daily snapshots — hover to read the trend at any day.
+                The Velocity series derives historical turns from daily capacity and historical BTC
+                prices, with the latest volume estimate held constant.
+              </span>
+            </p>
+          </InfoTooltip>
+        </span>
+        {historyAvailable && (
+          <span className="velocity-toggle">
+            <button
+              className={`vt-btn${view === "gauge" ? " vt-btn--active" : ""}`}
+              onClick={() => setView("gauge")}
+            >
+              Gauge
+            </button>
+            <button
+              className={`vt-btn${view === "trend" ? " vt-btn--active" : ""}`}
+              onClick={() => setView("trend")}
+            >
+              Trend
+            </button>
+          </span>
+        )}
       </h2>
-      {velocity_stats ? (
+      {view === "trend" ? (
+        <TrendView history={history} velHistory={velHistory} />
+      ) : velocity_stats ? (
         <div className="velocity-body">
           <VelocityGauge velocity={velocity_stats.velocity} onDone={handleDone} />
 

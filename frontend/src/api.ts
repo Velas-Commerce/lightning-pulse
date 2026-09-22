@@ -25,13 +25,17 @@ export async function fetchLargestNodes() {
   return res.json();
 }
 
+// Throws on non-OK — /node/* returns 503 while the LND node is unreachable
 export async function fetchGraphInfo() {
   const res = await fetch(`${BASE_URL}/node/graph-info`);
+  if (!res.ok) throw new Error(`LND unavailable (${res.status})`);
   return res.json();
 }
 
+// Throws on non-OK — 503 until the first metrics computation finishes
 export async function fetchNetworkMetrics() {
   const res = await fetch(`${BASE_URL}/node/network-metrics`);
+  if (!res.ok) throw new Error(`Network metrics unavailable (${res.status})`);
   return res.json();
 }
 
@@ -42,5 +46,26 @@ export async function fetchGrowthStats() {
 
 export async function fetchVelocityStats() {
   const res = await fetch(`${BASE_URL}/lightning/velocity`);
+  return res.json();
+}
+
+// Throws on non-OK — /history/* returns 503 when MongoDB is not configured
+export async function fetchLightningStatsHistory(days = 90) {
+  const res = await fetch(`${BASE_URL}/history/lightning-stats?days=${days}`);
+  if (!res.ok) throw new Error(`History unavailable (${res.status})`);
+  return res.json();
+}
+
+// Derived velocity series (capacity snapshots × historical BTC price); same 503 rule
+export async function fetchVelocityHistory(days = 90) {
+  const res = await fetch(`${BASE_URL}/history/velocity?days=${days}`);
+  if (!res.ok) throw new Error(`History unavailable (${res.status})`);
+  return res.json();
+}
+
+// Daily network-metrics snapshots (pulse, gini, centralization, fees); same 503 rule
+export async function fetchNetworkMetricsHistory(days = 90) {
+  const res = await fetch(`${BASE_URL}/history/network-metrics?days=${days}`);
+  if (!res.ok) throw new Error(`History unavailable (${res.status})`);
   return res.json();
 }

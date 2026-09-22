@@ -89,6 +89,22 @@ class LiquidityVelocity(BaseModel):
     btc_price_usd: int
 
 
+class VelocityHistoryEntry(BaseModel):
+    recorded_at: str
+    velocity: float
+    capacity_sats: int
+    btc_price_usd: float
+
+
+class HistoricalPricePoint(BaseModel):
+    time: int
+    USD: float
+
+
+class HistoricalPriceResponse(BaseModel):
+    prices: list[HistoricalPricePoint]
+
+
 class BtcPrice(BaseModel):
     time: int
     USD: int

@@ -828,6 +828,105 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ── VELOCITY TREND VIEW ── */
+.velocity-card h2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.velocity-toggle {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: #150505;
+  border: 1px solid var(--separator);
+  border-radius: 4px;
+}
+
+.vt-btn {
+  font-family: inherit;
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.22rem 0.5rem;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+}
+
+.vt-btn:hover {
+  color: var(--text);
+}
+
+.vt-btn--active {
+  color: var(--lightning);
+  background: rgba(245, 196, 0, 0.12);
+}
+
+.velocity-trend-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  width: 100%;
+  margin-bottom: 0.35rem;
+}
+
+.velocity-series-row {
+  width: 100%;
+  margin: 0.15rem 0 0.4rem;
+}
+
+.vt-current {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--lightning);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 12px var(--lightning-glow);
+}
+
+.vt-delta {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+}
+
+.vt-delta--up {
+  color: var(--lightning);
+}
+
+.vt-delta--down {
+  color: #cc6600;
+}
+
+.velocity-trend-caption {
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-top: 0.5rem;
+}
+
+.velocity-trend-empty {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 2rem 0.5rem;
+}
+
+/* Generic "data unavailable" note inside a card (e.g. LND node offline) */
+.card-empty {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 1rem 0.5rem;
+}
+
 /* ── INFO TOOLTIP ── */
 .info-tooltip-wrap {
   position: relative;

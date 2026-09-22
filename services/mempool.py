@@ -1,10 +1,11 @@
 import httpx
 from cachetools import TTLCache
-from models import LightningStatsResponse, NodesPerCountry, LargestNode, BtcPrice
+from models import LightningStatsResponse, NodesPerCountry, LargestNode, BtcPrice, HistoricalPricePoint, HistoricalPriceResponse
 
 # curl -sSL "https://mempool.space/api/v1/lightning/statistics/latest"
 # curl -sSL "https://mempool.space/api/v1/lightning/nodes/rankings/age"
 # curl -sSL "https://mempool.space/api/v1/prices"
+# curl -sSL "https://mempool.space/api/v1/historical-price"
 
 MEMPOOL_BASE_URL = "https://mempool.space/api/v1/"
 
@@ -13,6 +14,7 @@ _stats_cache:   TTLCache = TTLCache(maxsize=1, ttl=60)   # network stats — ref
 _country_cache: TTLCache = TTLCache(maxsize=1, ttl=300)  # country breakdown — refresh every 5 min
 _nodes_cache:   TTLCache = TTLCache(maxsize=1, ttl=300)  # largest nodes — refresh every 5 min
 _price_cache:   TTLCache = TTLCache(maxsize=1, ttl=30)   # BTC price — refresh every 30 seconds
+_history_cache: TTLCache = TTLCache(maxsize=1, ttl=21600)  # historical BTC prices — refresh every 6 h
 
 
 async def get_lightning_stats() -> LightningStatsResponse:
@@ -49,4 +51,14 @@ async def get_btc_price() -> BtcPrice:
             response.raise_for_status()
             _price_cache["result"] = BtcPrice(**response.json())
     return _price_cache["result"]
+
+
+async def get_historical_prices() -> list[HistoricalPricePoint]:
+    # Hourly BTC prices back to 2010 (~2 MB payload) — used to derive historical velocity
+    if "result" not in _history_cache:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(MEMPOOL_BASE_URL + "historical-price", timeout=60.0)
+            response.raise_for_status()
+            _history_cache["result"] = HistoricalPriceResponse(**response.json()).prices
+    return _history_cache["result"]
     
