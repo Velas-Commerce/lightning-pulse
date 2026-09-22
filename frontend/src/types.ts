@@ -118,3 +118,53 @@ export type LiquidityVelocity = {
   capacity_usd: number;
   btc_price_usd: number;
 };
+
+// ── Daily report card (GET /report/daily) ─────────────────────────────────────
+
+export type HourlyFlow = {
+  hour: number;
+  opens: number[]; // one entry per channel, capacity in BTC
+};
+
+export type ReportFlow = {
+  opens: number;
+  btc_in: number;
+  hourly: HourlyFlow[] | null; // null when block times were interpolated
+};
+
+export type ReportBaseline = {
+  window_days: number; // days of history held — what a trend would span
+  live_days: number; // of those, how many the baseline is computed from
+  opens_median: number;
+  opens_mad: number;
+  btc_in_median: number;
+  btc_in_mad: number;
+};
+
+export type SlowIndex = {
+  key: string;
+  label: string;
+  value: number;
+  percentile: number; // position within the window, never a daily delta
+  series: number[];
+  as_of: string; // date the value describes; mempool-derived ones run weeks behind
+  stale_days: number;
+};
+
+export type ReportVerdict = {
+  headline: string;
+  subline: string;
+  lead_metric: string;
+  deviation: number;
+};
+
+export type DailyReport = {
+  date: string;
+  block_height: number;
+  flow: ReportFlow;
+  baseline: ReportBaseline;
+  slow: SlowIndex[];
+  verdict: ReportVerdict;
+  closes_available: boolean; // false until on-chain close detection lands
+  coverage_note: string;
+};

@@ -10,6 +10,7 @@ import NetworkMetricsList from "./components/NetworkMetricsList";
 import NetworkTopology from "./components/NetworkTopology";
 import GrowthStats from "./components/GrowthStats";
 import VelocityStats from "./components/VelocityStats";
+import ReportCard from "./components/ReportCard";
 
 const REFRESH_INTERVAL_MS = 60_000; // 60 seconds
 
@@ -37,6 +38,12 @@ function App() {
   return (
     <div>
       <Header status={statusLabel} lastRefreshed={lastRefreshed} />
+      {/* Sibling of the grid, not a child of it: the grid assigns column spans by
+          :nth-child, so inserting a card would shift NetworkMetricsList to
+          nth-child(4), which matches no rule and collapses it to 1 of 6 columns. */}
+      <div className="report-card-row">
+        <ReportCard />
+      </div>
       <div className="dashboard-grid">
         <GrowthStats refreshKey={refreshKey} />
         <VelocityStats refreshKey={refreshKey} />
