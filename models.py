@@ -114,3 +114,49 @@ class BtcPrice(BaseModel):
     CHF: int
     AUD: int
     JPY: int
+
+
+class HourlyFlow(BaseModel):
+    hour: int
+    opens: list[float]  # one entry per channel, capacity in BTC
+
+
+class ReportFlow(BaseModel):
+    opens: int
+    btc_in: float
+    hourly: list[HourlyFlow] | None  # None when block times were interpolated
+
+
+class ReportBaseline(BaseModel):
+    window_days: int      # days of history actually held, not a fixed 90
+    live_days: int        # of those, how many were collected live rather than backfilled
+    opens_median: float
+    opens_mad: float
+    btc_in_median: float
+    btc_in_mad: float
+
+
+class SlowIndex(BaseModel):
+    key: str
+    label: str
+    value: float
+    percentile: int       # position within the window, never a daily delta
+    series: list[float]
+
+
+class ReportVerdict(BaseModel):
+    headline: str
+    subline: str
+    lead_metric: str
+    deviation: float
+
+
+class DailyReport(BaseModel):
+    date: str
+    block_height: int
+    flow: ReportFlow
+    baseline: ReportBaseline
+    slow: list[SlowIndex]
+    verdict: ReportVerdict
+    closes_available: bool  # False until on-chain close detection lands
+    coverage_note: str

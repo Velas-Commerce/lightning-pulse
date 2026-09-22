@@ -21,8 +21,9 @@ Data sources:
 main.py                  FastAPI app: lifespan (DB connect + background refresh loop), CORS, router registration
 db.py                    Optional MongoDB (pymongo AsyncMongoClient); disabled if MONGODB_URI is unset
 models.py                All Pydantic response models
-routers/                 HTTP layer only — one router per concern (health, lnd, mempool, growth_stats, history)
+routers/                 HTTP layer only — one router per concern (health, lnd, mempool, growth_stats, history, report)
 services/                Business logic: external API calls, caching, metric computation
+scripts/                 One-shot maintenance scripts, kept out of the uvicorn import path
 tls.cert                 LND node TLS certificate (gitignored, required locally unless TLS_CERT_B64 is used)
 frontend/
   src/App.tsx            Dashboard grid; 60-second refresh via a `refreshKey` prop passed to all cards
@@ -37,9 +38,12 @@ frontend/
 
 - **Layering convention:** routers contain no logic — they call a service function and declare a `response_model` from `models.py`. Services handle HTTP calls to LND/Mempool.space and all computation.
 - **Caching:** `cachetools.TTLCache(maxsize=1, ttl=N)` per upstream dataset in `services/mempool.py` and `services/lnd.py` (TTLs of 30 s – 5 min). Do not add per-request fetches without going through these caches — the frontend polls every 60 s and would hammer the upstream APIs.
-- **Background metrics:** `services/graph_metrics.py` runs a `refresh_loop()` started in the FastAPI lifespan. Every 24 h it fetches the full LND graph (~large payload, 120 s timeout), computes `NetworkMetrics` (pulse score, Gini coefficient, top-10/top-100 centralization, median fee rate, median node degree), keeps the result in a module-level `_cache`, and persists a snapshot to MongoDB if connected. `/node/network-metrics` serves only this cache and returns 503 until the first computation finishes.
+- **Background metrics:** `services/graph_metrics.py` runs a `refresh_loop()` started in the FastAPI lifespan. It fetches the full LND graph (~43 MB, ~40k channels, 120 s timeout), computes `NetworkMetrics` (pulse score, Gini coefficient, top-10/top-100 centralization, median fee rate, median node degree), keeps the result in a module-level `_cache`, and persists a snapshot to MongoDB if connected. `/node/network-metrics` serves only this cache and returns 503 until the first computation finishes.
+- **Snapshot schedule:** the loop runs once at boot and then at a **fixed 00:15 UTC** (`SNAPSHOT_HOUR_UTC` / `SNAPSHOT_MINUTE_UTC`), not every 24 h from process start — a drifting schedule would undermine the median+MAD baselines the report card rests on. Snapshots are **upserted by UTC `date`**, so a restart refreshes the day's document rather than appending a second one. Documents written before the `date` field existed have no date, never match, and are left alone; no migration was needed.
+- **Channel opens:** `services/channel_flow.py` decodes the BOLT 7 short channel ID on every graph edge, which encodes the block that confirmed the funding transaction. One graph fetch therefore reconstructs the entire history of opens with no day-over-day diffing. Block heights are placed in time by a `BlockClock` built from mempool.space timestamps — exact for the last `EXACT_BLOCKS` (~3 days), interpolated between daily anchors before that. **Only exactly-timed days get hourly detail**; interpolated days carry `hourly: None`, because their day boundaries are good to within the hour but not the hour-bucket. Two caveats travel with every number: only channels *still open* are visible, so older days undercount, and this is our own node's gossip view, not the whole network.
 - **LND offline behavior:** `/node/graph-info` returns 503 when the node is unreachable (`routers/lnd.py` translates `httpx` errors). The frontend `/node/*` fetchers throw on non-OK, and the affected cards degrade instead of crashing — Network Topology falls back to mempool.space-only data, Network Metrics shows an unavailable note.
 - **Pulse score formula:** equity 35 % + decentralization 35 % + fee health 30 %. The scoring logic is duplicated on the frontend in `frontend/src/components/NetworkMetricsList.tsx` (`calcComponents`) — **keep both implementations in sync** when changing it.
+- **Daily report card:** `routers/report.py` exposes `GET /report/daily`, served by `services/report_card.py` from the `daily_flow` collection. Baselines are **median + MAD**, not mean + stddev, because channel flow is spiky. The comparison window is derived from the data actually held (`window_days`), never hardcoded, so generated copy grows with the archive — and `BANNED_PHRASES` guards against "record"/"all-time" claims the ~3-month archive cannot support. While fewer than `MIN_LIVE_DAYS` live days exist, the verdict reports facts and makes no claim about significance, because backfilled days undercount. Run `python scripts/backfill_opens.py [days]` once after deploying to seed history; it marks days `is_backfilled: True` and never overwrites a day the live job recorded.
 - **History:** `routers/history.py` exposes `/history/network-metrics`, `/history/graph-info`, `/history/lightning-stats` (`?days=1..365`, default 30), reading from MongoDB collections `network_metrics`, `graph_info`, `lightning_stats`. `/history/velocity` derives velocity per snapshot by joining `lightning_stats` capacity with mempool's hourly historical prices (`services/velocity.py`), holding the latest hardcoded monthly-volume estimate constant — nothing extra is persisted. All history endpoints return 503 when the database is not configured. The Velocity and Network Metrics cards each have a trend view (Gauge/Current ↔ Trend toggle) built on these endpoints, sharing `TrendChart.tsx`; the toggle hides itself when history 503s.
 - **TLS cert handling** (`services/lnd.py`): `TLS_CERT_B64` (base64 cert, for env-var-only hosts) takes priority; otherwise `LND_TLS_CERT_PATH` (default `tls.cert`) is used. `LND_URL` and `LND_READONLY_MACAROON_HEX` are stripped of whitespace on load.
 
@@ -83,12 +87,13 @@ API docs are auto-generated at `http://localhost:8000/docs` when the backend run
 
 ## Testing
 
-There is currently **no test suite** — no pytest, no Jest/Vitest, no CI pipeline. Verification is manual:
+There is **no pytest/Vitest suite and no CI pipeline**. Verification is manual, with one scripted exception:
 
+- `python scripts/check_report_card.py` — 43 assertions over the report card's pure logic (short channel ID decode, `BlockClock` interpolation, median/MAD, percentiles, every verdict branch, the language guard). No network, no database; exits non-zero on failure. Run it after touching `services/report_card.py` or `services/channel_flow.py`. Several checks are regressions for bugs that rendered perfectly while being wrong — a verdict that narrated the wrong metric, a "last 0 days" clause, and backfilled days polluting the baseline.
 - Backend: hit the endpoint (e.g. `curl http://localhost:8000/health`) or use `/docs`; compare against the upstream API response.
 - Frontend: `npm run build` (type-checks via `tsc -b`) and `npm run lint`.
 
-If you add tests, there is no existing convention to match — choose pytest for the backend and keep them out of the import path used by uvicorn.
+If you add more tests, choose pytest for the backend and keep them out of the import path used by uvicorn, as `scripts/` already is.
 
 ## Code Style Guidelines
 
@@ -100,10 +105,23 @@ If you add tests, there is no existing convention to match — choose pytest for
 
 ## Deployment
 
-Designed as two separate services (both currently target Railway; `frontend/railway.json` builds with `npm run build` and starts with `npm start`):
+Production is **two separate Railway services**, both watching `main`:
 
-- **Backend:** any Python host. Set all backend env vars in the host dashboard, using `TLS_CERT_B64` instead of a cert file.
-- **Frontend:** any static host. Set `VITE_API_URL` before `npm run build` (it is baked in at build time).
+- **Backend** (service `lightning-pulse`) — Python host running `uvicorn main:app --host 0.0.0.0 --port $PORT`. There is no committed backend deploy config; the start command and all env vars live in the Railway dashboard. Use `TLS_CERT_B64` rather than a cert file.
+- **Frontend** — served at `pulse.velascommerce.com`. `frontend/railway.json` builds with `npm run build` and starts with `npm start` (`serve dist -p $PORT`).
+
+**A push to `origin/main` deploys both services.** Treat it as a production deploy, not just source control.
+
+Deploy ordering is not controllable via push, and the frontend always wins the race (a ~3 s Vite build versus pip install → uvicorn → a full LND graph fetch with a 120 s timeout). This means a brief window of new-frontend-against-old-backend: a missing `/history/*` endpoint 404s, the fetcher throws, and the affected trend toggle hides itself — degraded, not broken. To eliminate the window, pause the frontend service, push, wait for the backend to come up, then resume it.
+
+Expect `/node/network-metrics` to return 503 for up to 120 s after every backend deploy while the first `refresh_metrics()` runs; `/health` reports `metrics_ready: false` until it finishes. The Network Metrics card renders an unavailable note during this window by design.
+
+Env vars exist only in the Railway dashboards — nothing in the repo records the production values:
+
+- Backend: `MONGODB_URI` is the easiest to lose. Without it `/history/*` returns 503 and **every** trend toggle silently disappears. Also confirm `CORS_ORIGINS` names the production frontend origin rather than the `http://localhost:5173` default.
+- Frontend: `VITE_API_URL` is baked in at build time, so it must be set *before* Railway runs the build. Changing the backend URL requires a rebuild, not a restart.
+
+There is no CI. `npm run build` (which runs `tsc -b`) is the only type gate that exists — run it locally before merging to `main`.
 
 ## Security Considerations
 
