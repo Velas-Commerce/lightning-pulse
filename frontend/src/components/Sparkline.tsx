@@ -1,29 +1,29 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 
 // Compact trend line for the report card's slow indices.
 //
 // Not a variant of TrendChart: that one locks a 200x110 viewBox with no explicit
 // height, so at this width it renders ~92px tall, and its axes, tick labels and
 // crosshair are unconditional. Two cards depend on its exact rendering, so it is
-// left alone. The house idioms are shared though — pathLength=1 draw-on with an
+// left alone. The house draw-on idiom is shared though — pathLength=1 with an
 // ease-out cubic on requestAnimationFrame.
 //
-// Values are plotted index-spaced rather than time-spaced. The slow indices are
-// already smooth and their series lengths differ (our own metrics are daily; the
-// mempool-derived ones arrive far more sparsely), so even spacing reads better
-// than gaps, and the caption carries the window rather than an axis.
+// Shape only, deliberately. There is no axis, no endpoint marker and no hover: the
+// line says which way the metric has been going, and the caption beneath it carries
+// every number a reader needs — where the latest reading ranks, how far the window
+// moved, and how many readings it holds. An endpoint dot was tried and removed; it
+// marked the latest value, which is already printed in full above the line, so it
+// read as though it meant something more.
+//
+// Values are plotted index-spaced rather than time-spaced. The indices are already
+// smooth and their series lengths differ (our own metrics are daily; the
+// mempool-derived ones arrive far more sparsely), so even spacing reads better than
+// gaps, and the caption carries the window rather than an axis.
 export function Sparkline({ values }: { values: number[] }) {
   const W = 168;
   const H = 26;
-  // Inset on both axes so the endpoint marker fits inside the viewBox. Without a
-  // horizontal inset the last point sits exactly on x = W and its right half is
-  // clipped off, which reads as a stray half-dot rather than a data point.
-  const padX = 4; // marker r=2.2 plus its 1.2 blur
-  const padY = 4;
-
-  // TrendChart hardcodes id="cap-glow"; four sparklines plus that chart on one
-  // page would all resolve to whichever <defs> the document defines first.
-  const glowId = `spark-glow-${useId()}`;
+  const padX = 1; // just enough that the stroke is not clipped at the edges
+  const padY = 3;
 
   const [animOffset, setAnimOffset] = useState(1);
   useEffect(() => {
@@ -51,27 +51,14 @@ export function Sparkline({ values }: { values: number[] }) {
   const d = values
     .map((v, i) => `${i === 0 ? "M" : "L"} ${x(i).toFixed(1)} ${y(v).toFixed(1)}`)
     .join(" ");
-  const lastX = x(values.length - 1);
-  const lastY = y(values[values.length - 1]);
 
   return (
-    // Scales uniformly: stretching to a fixed pixel height would turn the end
-    // dot into an ellipse whenever the grid column is wider than the viewBox.
+    // Scales uniformly; height follows from the viewBox aspect ratio.
     <svg
       viewBox={`0 0 ${W} ${H}`}
       style={{ width: "100%", height: "auto", display: "block" }}
       aria-hidden="true"
     >
-      <defs>
-        <filter id={glowId} x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="1.2" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
-
       <path
         d={d}
         fill="none"
@@ -83,16 +70,6 @@ export function Sparkline({ values }: { values: number[] }) {
         pathLength={1}
         strokeDasharray={1}
         strokeDashoffset={animOffset}
-      />
-
-      {/* Latest value, fading in as the line finishes drawing */}
-      <circle
-        cx={lastX}
-        cy={lastY}
-        r={2.2}
-        fill="var(--lightning)"
-        filter={`url(#${glowId})`}
-        opacity={1 - animOffset}
       />
     </svg>
   );
