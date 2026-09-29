@@ -15,7 +15,11 @@ import { useEffect, useId, useState } from "react";
 export function Sparkline({ values }: { values: number[] }) {
   const W = 168;
   const H = 26;
-  const pad = 3;
+  // Inset on both axes so the endpoint marker fits inside the viewBox. Without a
+  // horizontal inset the last point sits exactly on x = W and its right half is
+  // clipped off, which reads as a stray half-dot rather than a data point.
+  const padX = 4; // marker r=2.2 plus its 1.2 blur
+  const padY = 4;
 
   // TrendChart hardcodes id="cap-glow"; four sparklines plus that chart on one
   // page would all resolve to whichever <defs> the document defines first.
@@ -41,8 +45,8 @@ export function Sparkline({ values }: { values: number[] }) {
   // Flat series still render as a centred line rather than dividing by zero.
   const span = hi - lo || Math.abs(hi) * 0.02 || 1;
 
-  const x = (i: number) => (i / (values.length - 1)) * W;
-  const y = (v: number) => pad + (1 - (v - lo) / span) * (H - pad * 2);
+  const x = (i: number) => padX + (i / (values.length - 1)) * (W - padX * 2);
+  const y = (v: number) => padY + (1 - (v - lo) / span) * (H - padY * 2);
 
   const d = values
     .map((v, i) => `${i === 0 ? "M" : "L"} ${x(i).toFixed(1)} ${y(v).toFixed(1)}`)
