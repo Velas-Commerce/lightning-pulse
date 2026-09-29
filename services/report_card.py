@@ -142,6 +142,11 @@ def build_verdict(
     weekday: str,
     block_from: int,
     block_height: int,
+    closes: int = 0,
+    btc_out: float = 0.0,
+    closes_series: list[float] | None = None,
+    btc_out_series: list[float] | None = None,
+    closes_known: bool = False,
 ) -> ReportVerdict:
     """Lead with whichever metric deviates most. If nothing clears the threshold,
     say it was quiet — do not manufacture significance.
@@ -151,18 +156,35 @@ def build_verdict(
     network is global, so there is no shared night — and the local date can differ
     from the UTC date by hours, which is exactly how such copy goes wrong.
 
-    `opens_series` and `btc_in_series` must contain **live-collected days only**.
-    Backfilled days are systematically undercounted (only channels still open are
-    visible), so mixing them in would pull the median down and make every ordinary
-    day read as busy. They are fine for drawing a trend, not for judging one.
+    All four series must contain **live-collected days only**. Backfilled days are
+    systematically undercounted (only channels still open are visible), so mixing
+    them in would pull the median down and make every ordinary day read as busy.
+    They are fine for drawing a trend, not for judging one.
+
+    Closes carry a second restriction: they cannot be backfilled at all, so their
+    series starts empty and only becomes comparable once `MIN_LIVE_DAYS` of it
+    exist. Until then closes are reported as a figure but never lead, and never
+    imply a comparison. `closes_known` says whether today's closes are measured at
+    all — a day recorded before detection existed has none.
 
     `gini_days` is the separately collected network-metrics history, a genuinely
     different and longer window — the copy must not conflate the two.
     """
+    closes_series = closes_series or []
+    btc_out_series = btc_out_series or []
+
     frame = _gini_clause(gini_percentile, gini_days) if gini_days else ""
     span = _block_span(block_from, block_height)
     live_days = len(opens_series)
     highlight: str | None = None
+
+    net_channels = opens - closes
+    net_btc = btc_in - btc_out
+    net_clause = (
+        f" The day nets {net_channels:+,} channels and {net_btc:+.1f} BTC."
+        if closes_known
+        else ""
+    )
 
     if live_days < MIN_LIVE_DAYS:
         highlight = f"{opens:,} new channels"
@@ -170,7 +192,7 @@ def build_verdict(
             headline=_guard(f"{highlight} on {weekday}."),
             subline=_guard(
                 span + f"{opens:,} channels opened carrying {btc_in:.1f} BTC of new "
-                f"capacity. Baseline still calibrating — {live_days} of "
+                f"capacity.{net_clause} Baseline still calibrating — {live_days} of "
                 f"{MIN_LIVE_DAYS} days collected live, so the day is reported "
                 f"without comparison." + frame
             ),
@@ -183,48 +205,97 @@ def build_verdict(
         ("opens", deviation(opens, opens_series)),
         ("btc_in", deviation(btc_in, btc_in_series)),
     ]
+    # Closes only compete once their own history is long enough to judge against.
+    if len(closes_series) >= MIN_LIVE_DAYS:
+        candidates += [
+            ("closes", deviation(closes, closes_series)),
+            ("btc_out", deviation(btc_out, btc_out_series)),
+        ]
+
     lead_metric, lead_deviation = max(candidates, key=lambda pair: abs(pair[1]))
     magnitude = f"{abs(lead_deviation):.1f}"
     norm = f"{live_days}-day norm"
+    high = lead_deviation > 0
 
     if abs(lead_deviation) < DEVIATION_THRESHOLD:
         headline = f"{weekday} was quiet on Lightning."
         subline = (
             span + f"nothing moved more than a deviation from normal. {opens:,} "
-            f"channels opened, carrying {btc_in:.1f} BTC of new capacity." + frame
+            f"channels opened, carrying {btc_in:.1f} BTC of new capacity."
+            + net_clause + frame
         )
+
+    elif lead_metric == "opens":
+        if high:
+            highlight = f"{opens:,} new channels"
+            headline = f"{highlight} — a busy {weekday}."
+            subline = (
+                span + f"that is {magnitude}σ above the {norm}, adding "
+                f"{btc_in:.1f} BTC of capacity." + net_clause + frame
+            )
+        else:
+            headline = f"{weekday} ran light on Lightning."
+            subline = (
+                span + f"activity sat {magnitude}σ below the {norm}. {opens:,} "
+                f"channels opened, carrying {btc_in:.1f} BTC." + net_clause + frame
+            )
+
     elif lead_metric == "btc_in":
         # Capacity is the outlier, so the copy must talk about capacity — the
         # channel count may well be sitting right on its median.
         highlight = f"{btc_in:.1f} BTC"
-        if lead_deviation > 0:
+        if high:
             headline = f"{highlight} entered Lightning on {weekday}."
             subline = (
                 span + f"that is {magnitude}σ above the {norm}, carried by a "
                 f"handful of large opens rather than broad activity. {opens:,} "
-                f"channels opened." + frame
+                f"channels opened." + net_clause + frame
             )
         else:
             headline = f"New capacity ran thin on {weekday} — {highlight}."
             subline = (
                 span + f"that is {magnitude}σ below the {norm} for capacity, "
                 f"though {opens:,} channels still opened. The day's channels were "
-                f"small ones." + frame
+                f"small ones." + net_clause + frame
             )
-    else:
-        if lead_deviation > 0:
-            highlight = f"{opens:,} new channels"
-            headline = f"{highlight} — a busy {weekday}."
+
+    elif lead_metric == "closes":
+        highlight = f"{closes:,} channels"
+        if high:
+            # Only claim the heaviest day when it actually is one.
+            heaviest = (
+                f" — the heaviest closing day {window_phrase(len(closes_series))}"
+                if closes >= max(closes_series)
+                else ""
+            )
+            headline = f"{highlight} closed on {weekday}."
             subline = (
-                span + f"that is {magnitude}σ above the {norm}, adding "
-                f"{btc_in:.1f} BTC of capacity." + frame
+                span + f"that is {magnitude}σ above the {norm}, taking "
+                f"{btc_out:.1f} BTC with them{heaviest}. Opens held nearer average "
+                f"at {opens:,}." + net_clause + frame
             )
         else:
-            headline = f"{weekday} ran light on Lightning."
+            headline = f"Closures eased on {weekday} — {highlight}."
             subline = (
-                span + f"activity sat {magnitude}σ below the {norm}. {opens:,} "
-                f"channels opened, carrying {btc_in:.1f} BTC." + frame
+                span + f"that is {magnitude}σ below the {norm} for closures, "
+                f"against {opens:,} opens." + net_clause + frame
             )
+
+    else:  # btc_out
+        highlight = f"{btc_out:.1f} BTC"
+        if high:
+            headline = f"{highlight} left Lightning on {weekday}."
+            subline = (
+                span + f"that is {magnitude}σ above the {norm}, as {closes:,} "
+                f"channels closed." + net_clause + frame
+            )
+        else:
+            headline = f"Little capacity left Lightning on {weekday}."
+            subline = (
+                span + f"only {btc_out:.1f} BTC withdrawn, {magnitude}σ below "
+                f"the {norm}, across {closes:,} closures." + net_clause + frame
+            )
+            highlight = None
 
     return ReportVerdict(
         headline=_guard(headline),
@@ -321,12 +392,25 @@ async def get_daily_report() -> DailyReport | None:
     opens_series = [float(d["opens"]) for d in live]
     btc_in_series = [float(d["btc_in"]) for d in live]
 
+    # Closes exist only from the day detection started — there is no channel-set
+    # history to reconstruct them from, so this series is shorter than the others
+    # and stays empty until then.
+    closed_live = [d for d in live if d.get("closes") is not None]
+    closes_series = [float(d["closes"]) for d in closed_live]
+    btc_out_series = [float(d.get("btc_out") or 0.0) for d in closed_live]
+
     slow = await _slow_indices(database, BASELINE_WINDOW_DAYS)
     gini = next((s for s in slow if s.key == "gini"), None)
 
     hourly = today.get("hourly")
     opens_median = _median(opens_series)
     btc_in_median = _median(btc_in_series)
+    closes_median = _median(closes_series)
+    btc_out_median = _median(btc_out_series)
+
+    closes_known = today.get("closes") is not None
+    closes = int(today.get("closes") or 0)
+    btc_out = float(today.get("btc_out") or 0.0)
 
     block_height = today.get("block_height", 0)
     # Days recorded before the range was captured have no block_from; the copy and
@@ -341,7 +425,14 @@ async def get_daily_report() -> DailyReport | None:
         flow=ReportFlow(
             opens=today["opens"],
             btc_in=today["btc_in"],
-            hourly=[HourlyFlow(**h) for h in hourly] if hourly else None,
+            closes=closes,
+            btc_out=btc_out,
+            net_channels=today["opens"] - closes,
+            net_btc=round(today["btc_in"] - btc_out, 4),
+            hourly=[
+                HourlyFlow(hour=h["hour"], opens=h["opens"], closes=h.get("closes") or [])
+                for h in hourly
+            ] if hourly else None,
         ),
         baseline=ReportBaseline(
             window_days=len(history),   # everything held, i.e. what the trend spans
@@ -350,6 +441,11 @@ async def get_daily_report() -> DailyReport | None:
             opens_mad=_mad(opens_series, opens_median),
             btc_in_median=btc_in_median,
             btc_in_mad=_mad(btc_in_series, btc_in_median),
+            closes_days=len(closes_series),
+            closes_median=closes_median,
+            closes_mad=_mad(closes_series, closes_median),
+            btc_out_median=btc_out_median,
+            btc_out_mad=_mad(btc_out_series, btc_out_median),
         ),
         slow=slow,
         verdict=build_verdict(
@@ -362,11 +458,19 @@ async def get_daily_report() -> DailyReport | None:
             weekday=weekday_of(today["date"]),
             block_from=block_from,
             block_height=block_height,
+            closes=closes,
+            btc_out=btc_out,
+            closes_series=closes_series,
+            btc_out_series=btc_out_series,
+            closes_known=closes_known,
         ),
-        closes_available=False,
+        closes_available=closes_known,
         coverage_note=(
-            "Opens seen by our own LND node, which gossips a narrower view than the "
-            "whole network. Channels closed before a snapshot are not visible, so "
-            "older days undercount."
+            "Opens and closes seen by our own LND node, which gossips a narrower view "
+            "than the whole network. Opens are decoded from each channel's short "
+            "channel ID; closes are confirmed by the funding output being spent "
+            "on-chain, so a channel that merely left our view is not counted. "
+            "Channels closed before a snapshot are invisible, so older days "
+            "undercount opens."
         ),
     )

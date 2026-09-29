@@ -124,11 +124,16 @@ export type LiquidityVelocity = {
 export type HourlyFlow = {
   hour: number;
   opens: number[]; // one entry per channel, capacity in BTC
+  closes: number[];
 };
 
 export type ReportFlow = {
   opens: number;
   btc_in: number;
+  closes: number; // 0 until close detection has a set to diff against
+  btc_out: number;
+  net_channels: number;
+  net_btc: number;
   hourly: HourlyFlow[] | null; // null when block times were interpolated
 };
 
@@ -139,6 +144,12 @@ export type ReportBaseline = {
   opens_mad: number;
   btc_in_median: number;
   btc_in_mad: number;
+  // Zero until enough days carry close data; closes cannot be backfilled
+  closes_days: number;
+  closes_median: number;
+  closes_mad: number;
+  btc_out_median: number;
+  btc_out_mad: number;
 };
 
 export type SlowIndex = {

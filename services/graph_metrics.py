@@ -2,7 +2,7 @@ import asyncio
 import db
 from datetime import datetime, timedelta, timezone
 from models import NetworkMetrics
-from services import channel_flow
+from services import channel_closes, channel_flow
 from services.lnd import _client, LND_URL, get_graph_info
 from services.mempool import get_chain_tip, get_lightning_stats
 
@@ -151,19 +151,24 @@ async def _persist_snapshot() -> None:
 
 
 async def _persist_flow(graph: dict) -> None:
-    """Record completed days of channel opens, decoded from short channel IDs.
+    """Record completed days of channel opens and closes.
 
     Today is deliberately skipped — the card reports a finished day, not a partial
     one. Days whose blocks all carry exact timestamps are refreshed on every run;
     older days, whose times are interpolated and so cannot honestly be binned to
     the hour, are only filled in if missing. That makes a missed run self-healing
     without ever overwriting hourly detail with a coarser version of the same day.
+
+    Opens come from the graph itself. Closes need the previous run's channel set to
+    diff against and an on-chain check per candidate, so they only start once a set
+    has been stored — see services/channel_closes.py.
     """
     database = db.get_db()
     if database is None:
         return
 
-    events = channel_flow.open_events(graph.get("edges", []))
+    edges = graph.get("edges", [])
+    events = channel_flow.open_events(edges)
     if not events:
         return
 
@@ -180,11 +185,47 @@ async def _persist_flow(graph: dict) -> None:
     recent = [(h, c) for h, c in events if h >= floor]
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    for date, doc in channel_flow.bucket_by_day(recent, clock).items():
+
+    closed_by_day: dict[str, dict] = {}
+    try:
+        result = await channel_closes.detect_closes(database, edges, today)
+        in_window = [c for c in result["closes"] if c[0] >= floor]
+        dropped = len(result["closes"]) - len(in_window)
+        closed_by_day = channel_closes.bucket_closes(in_window, clock)
+        print(
+            f"closes: {len(in_window)} confirmed, {result['watching']} still watching, "
+            f"{result['expired']} expired unspent, {dropped} outside the window"
+            + (" (first run — set established, nothing to diff yet)"
+               if result["first_run"] else "")
+        )
+    except Exception as e:
+        # Closes are a bonus on top of opens; never let them cost us the opens.
+        print(f"close detection failed: {e}")
+
+    days = channel_flow.bucket_by_day(recent, clock)
+    for date in sorted(set(days) | set(closed_by_day)):
         if date >= today:
             continue
-        exact = doc["hourly"] is not None
+
+        doc = days.get(date)
+        if doc is None:
+            continue  # closes with no opens bucket: nothing to anchor the day to
         doc.pop("date")  # supplied by the filter
+        exact = doc["hourly"] is not None
+
+        closed = closed_by_day.get(date)
+        if closed is not None:
+            doc["closes"] = closed["closes"]
+            doc["btc_out"] = closed["btc_out"]
+            # Merge into the same hourly array the opens use, so one hour is one
+            # object carrying both sides of the flow.
+            if doc["hourly"] is not None and closed["hourly"] is not None:
+                for hour, caps in enumerate(closed["hourly"]):
+                    doc["hourly"][hour]["closes"] = caps
+        if doc["hourly"] is not None:
+            for entry in doc["hourly"]:
+                entry.setdefault("closes", [])
+
         doc["is_backfilled"] = not exact
         doc["recorded_at"] = datetime.now(timezone.utc)
         await database["daily_flow"].update_one(

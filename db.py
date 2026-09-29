@@ -22,6 +22,9 @@ async def connect() -> None:
     # One document per UTC day, so uniqueness is the invariant worth enforcing.
     await db["daily_flow"].create_index([("date", ASCENDING)], unique=True)
 
+    # channel_set holds a single overwritten snapshot of the current channel set,
+    # which close detection diffs against. Keyed by _id, so no index is needed.
+
 
 async def disconnect() -> None:
     global _client

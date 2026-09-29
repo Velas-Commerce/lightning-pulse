@@ -118,12 +118,17 @@ class BtcPrice(BaseModel):
 
 class HourlyFlow(BaseModel):
     hour: int
-    opens: list[float]  # one entry per channel, capacity in BTC
+    opens: list[float]   # one entry per channel, capacity in BTC
+    closes: list[float]
 
 
 class ReportFlow(BaseModel):
     opens: int
     btc_in: float
+    closes: int          # 0 until close detection has a set to diff against
+    btc_out: float
+    net_channels: int
+    net_btc: float
     hourly: list[HourlyFlow] | None  # None when block times were interpolated
 
 
@@ -134,6 +139,12 @@ class ReportBaseline(BaseModel):
     opens_mad: float
     btc_in_median: float
     btc_in_mad: float
+    # Zero-width until enough days carry close data; closes cannot be backfilled.
+    closes_days: int
+    closes_median: float
+    closes_mad: float
+    btc_out_median: float
+    btc_out_mad: float
 
 
 class SlowIndex(BaseModel):

@@ -1241,6 +1241,12 @@
   text-shadow: 0 0 12px var(--lightning-glow);
 }
 
+/* Closes and capacity leaving. Reuses the crimson end of the app's existing
+   bad->ok->good ramp (#aa0000 / #cc6600 / #f5c400) rather than a new colour. */
+.rc-figure-value--dn {
+  color: #cc6600;
+}
+
 .rc-figure-value--dim {
   color: var(--text-dim);
   opacity: 0.55;

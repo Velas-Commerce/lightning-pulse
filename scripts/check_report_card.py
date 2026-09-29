@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from services.channel_flow import (  # noqa: E402
     BlockClock, bucket_by_day, decode_channel_id, open_events,
 )
-from services import report_card as rc  # noqa: E402
+from services import channel_closes, report_card as rc  # noqa: E402
 
 fails: list[str] = []
 
@@ -76,10 +76,10 @@ btc = [10.0] * 30
 DAY, FROM, TO = "Thursday", 968_922, 969_066
 
 
-def verdict(opens, btc_in, o_series, b_series, pct=50, gini_days=112):
+def verdict(opens, btc_in, o_series, b_series, pct=50, gini_days=112, **kw):
     """Positional signature is long; keep the checks readable."""
     return rc.build_verdict(opens, btc_in, o_series, b_series, pct, gini_days,
-                            DAY, FROM, TO)
+                            DAY, FROM, TO, **kw)
 
 
 check("weekday is locale-independent", rc.weekday_of("2026-09-28"), "Monday")
@@ -145,10 +145,74 @@ for phrase in rc.BANNED_PHRASES:
                verdict(100, 10.0, flat, btc, pct=20),
                verdict(100, 1.0, flat, spread),
                verdict(20, 10.0, spread, btc),
-               verdict(110, 12.0, short, short)):
+               verdict(110, 12.0, short, short),
+               verdict(100, 10.0, flat, btc, closes=100, btc_out=12.0,
+                       closes_series=[40.0, 55.0] * 7, btc_out_series=[12.0] * 14,
+                       closes_known=True),
+               verdict(100, 10.0, flat, btc, closes=5, btc_out=0.2,
+                       closes_series=[40.0, 55.0] * 7, btc_out_series=[12.0] * 14,
+                       closes_known=True)):
         if phrase in (vv.headline + vv.subline).lower():
             fails.append(f"banned phrase {phrase!r} leaked into copy")
 print("ok   no banned phrase in any branch")
+
+print("\n== closes ==")
+# Closes cannot be backfilled — there is no channel-set history to reconstruct
+# them from — so their series starts empty and must not be allowed to lead.
+closes_live = [40.0, 55.0, 48.0, 61.0, 44.0, 52.0, 58.0,
+               46.0, 50.0, 63.0, 42.0, 57.0, 49.0, 54.0]
+# Spread, not flat: a zero-MAD series yields deviation 0 by design, so a flat
+# one could never lead and would silently test nothing.
+out_live = [8.0, 12.0, 16.0, 10.0, 14.0, 9.0, 13.0,
+            11.0, 15.0, 12.0, 10.0, 14.0, 11.0, 13.0]
+
+v = verdict(100, 10.0, flat, btc, closes=900, btc_out=900.0,
+            closes_series=[], btc_out_series=[], closes_known=True)
+check("closes cannot lead without their own history", v.lead_metric in ("opens", "btc_in"), True)
+
+v = verdict(100, 10.0, flat, btc, closes=100, btc_out=12.0,
+            closes_series=closes_live, btc_out_series=out_live, closes_known=True)
+check("closes lead once they have history", v.lead_metric, "closes")
+check("closes-high headline", v.headline, f"100 channels closed on {DAY}.")
+check("closes-high highlight", v.highlight, "100 channels")
+check("net clause present when closes known", "nets +0 channels" in v.subline, True)
+
+# The "heaviest closing day" claim is only true when it actually is the maximum.
+check("heaviest claimed when it is the max", "heaviest closing day" in v.subline, True)
+v2 = verdict(100, 10.0, flat, btc, closes=75, btc_out=12.0,
+             closes_series=closes_live + [400.0], btc_out_series=out_live + [12.0],
+             closes_known=True)
+check("heaviest not claimed otherwise", "heaviest closing day" in v2.subline, False)
+
+v = verdict(100, 10.0, flat, btc, closes=5, btc_out=12.0,
+            closes_series=closes_live, btc_out_series=out_live, closes_known=True)
+check("closes-low leads on closes", v.lead_metric, "closes")
+check("closes-low headline", v.headline.startswith("Closures eased on"), True)
+
+v = verdict(100, 10.0, flat, btc, closes=50, btc_out=90.0,
+            closes_series=closes_live, btc_out_series=out_live, closes_known=True)
+check("btc_out-high leads", v.lead_metric, "btc_out")
+check("btc_out-high headline", v.headline, f"90.0 BTC left Lightning on {DAY}.")
+
+v = verdict(100, 10.0, flat, btc, closes=50, btc_out=0.2,
+            closes_series=closes_live, btc_out_series=out_live, closes_known=True)
+check("btc_out-low leads", v.lead_metric, "btc_out")
+check("btc_out-low headline", v.headline, f"Little capacity left Lightning on {DAY}.")
+
+# A day recorded before detection existed has no closes at all; the copy must not
+# imply a net figure it cannot compute.
+v = verdict(100, 10.0, flat, btc, closes_known=False)
+check("no net clause when closes unknown", "nets" in v.subline, False)
+v = verdict(110, 12.0, short, short, closes=7, btc_out=3.0, closes_known=True)
+check("calibrating still reports net when known", "nets +103 channels" in v.subline, True)
+
+print("\n== bucket_closes ==")
+cl = BlockClock({100: 1_700_000_000, 200: 1_700_086_400}, exact_from=150)
+buckets = channel_closes.bucket_closes([(160, 100_000_000), (170, 50_000_000)], cl)
+day = next(iter(buckets.values()))
+check("closes counted", day["closes"], 2)
+check("btc_out summed", day["btc_out"], 1.5)
+check("hourly closes is 24 buckets", len(day["hourly"]), 24)
 
 print("\n== backfilled days must not reach the baseline ==")
 # Regression: 88 undercounted backfilled days dragged 'normal' 23% below the live

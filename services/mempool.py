@@ -87,6 +87,49 @@ async def get_chain_tip() -> int:
     return _tip_cache["result"]
 
 
+async def get_outspends(points: Iterable[str]) -> dict[str, dict]:
+    """Resolve funding outpoints to their on-chain spend status.
+
+    `points` are LND `chan_point` strings ("<txid>:<vout>"). A **spent** funding
+    output means the channel genuinely closed; an **unspent** one means the channel
+    only left our gossip view, which is a different thing entirely and must never
+    be counted as a close. That distinction is the whole reason this call exists.
+
+    Only outpoints that resolved are returned — a failed lookup is indistinguishable
+    from "don't know yet", so the caller keeps watching rather than guessing.
+    """
+    wanted = list(dict.fromkeys(points))
+    if not wanted:
+        return {}
+
+    # Public API, and a busy day can ask about a couple of hundred outpoints.
+    semaphore = asyncio.Semaphore(5)
+    results: dict[str, dict] = {}
+
+    async with httpx.AsyncClient() as client:
+        async def fetch(point: str) -> tuple[str, dict | None]:
+            txid, _, vout = point.rpartition(":")
+            if not txid or not vout.isdigit():
+                return point, None
+            async with semaphore:
+                response = await client.get(
+                    MEMPOOL_API_URL + f"tx/{txid}/outspend/{vout}", timeout=30.0
+                )
+                response.raise_for_status()
+                return point, response.json()
+
+        for outcome in await asyncio.gather(
+            *(fetch(p) for p in wanted), return_exceptions=True
+        ):
+            if isinstance(outcome, BaseException):
+                continue
+            point, info = outcome
+            if info is not None:
+                results[point] = info
+
+    return results
+
+
 async def get_block_timestamps(heights: Iterable[int]) -> dict[int, int]:
     """Resolve block heights to unix timestamps.
 

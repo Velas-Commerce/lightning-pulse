@@ -110,6 +110,15 @@ function VerdictStep({ report }: { report: DailyReport }) {
         : `vs ${Math.round(baseline.opens_median).toLocaleString()} typical`,
       tone: "up",
     },
+    // Sits beside Opened so the two halves of the day's flow read together.
+    report.closes_available
+      ? {
+          key: "Closed",
+          value: flow.closes.toLocaleString(),
+          sub: `${flow.btc_out.toFixed(1)} BTC left`,
+          tone: "dn",
+        }
+      : { key: "Closed", value: "—", sub: "close detection pending", tone: "dim" },
     {
       key: "New capacity",
       value: `${flow.btc_in.toFixed(1)} BTC`,
@@ -121,9 +130,6 @@ function VerdictStep({ report }: { report: DailyReport }) {
     { key: "Median open", value: fmtCapacity(medianOpen), sub: "per channel" },
     ...(largestOpen !== null
       ? [{ key: "Largest open", value: fmtCapacity(largestOpen), sub: "single channel" }]
-      : []),
-    ...(!report.closes_available
-      ? [{ key: "Closed", value: "—", sub: "close detection pending", tone: "dim" }]
       : []),
   ];
 
