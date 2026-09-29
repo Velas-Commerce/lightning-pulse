@@ -156,10 +156,14 @@ export type ReportVerdict = {
   subline: string;
   lead_metric: string;
   deviation: number;
+  // Substring of the headline to emphasise; plain text, no markup crosses the API
+  highlight: string | null;
 };
 
 export type DailyReport = {
   date: string;
+  weekday: string; // UTC weekday, generated server-side alongside the copy
+  block_from: number; // first block of the day; the range is the real window
   block_height: number;
   flow: ReportFlow;
   baseline: ReportBaseline;

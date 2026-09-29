@@ -153,10 +153,15 @@ class ReportVerdict(BaseModel):
     subline: str
     lead_metric: str
     deviation: float
+    # Substring of the headline to emphasise. Sent as plain text rather than
+    # markup so no HTML crosses the API boundary.
+    highlight: str | None
 
 
 class DailyReport(BaseModel):
     date: str
+    weekday: str        # UTC weekday, not the viewer's — the copy is generated here
+    block_from: int     # first block of the day; the range is the real window
     block_height: int
     flow: ReportFlow
     baseline: ReportBaseline

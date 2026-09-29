@@ -73,60 +73,94 @@ short = [100.0] * 5          # under MIN_LIVE_DAYS
 flat = [100.0] * 30          # median 100, MAD 0
 spread = [80.0, 90.0, 100.0, 110.0, 120.0] * 6   # median 100, MAD 10
 btc = [10.0] * 30
+DAY, FROM, TO = "Thursday", 968_922, 969_066
 
-v = rc.build_verdict(110, 12.0, short, short, 80, 112)
+
+def verdict(opens, btc_in, o_series, b_series, pct=50, gini_days=112):
+    """Positional signature is long; keep the checks readable."""
+    return rc.build_verdict(opens, btc_in, o_series, b_series, pct, gini_days,
+                            DAY, FROM, TO)
+
+
+check("weekday is locale-independent", rc.weekday_of("2026-09-28"), "Monday")
+check("block span renders a range", rc._block_span(100, 250),
+      "Across blocks 100–250, ")
+check("block span empty when unknown", rc._block_span(0, 250), "")
+check("block span empty when inverted", rc._block_span(300, 250), "")
+
+v = verdict(110, 12.0, short, short, pct=80)
 check("calibrating lead", v.lead_metric, "opens")
 check("calibrating no deviation claim", v.deviation, 0.0)
+check("calibrating names the weekday", v.headline.endswith(f"on {DAY}."), True)
 check("calibrating states live count", "5 of 14 days" in v.subline, True)
+check("calibrating carries block range", "Across blocks 968,922" in v.subline, True)
 
-v = rc.build_verdict(100, 10.0, flat, btc, 55, 112)
-check("quiet headline", v.headline, "Quiet night on Lightning.")
+v = verdict(100, 10.0, flat, btc, pct=55)
+check("quiet headline", v.headline, f"{DAY} was quiet on Lightning.")
 check("quiet gini phrasing", "unremarkable" in v.subline, True)
+check("quiet has no highlight", v.highlight, None)
 
-v = rc.build_verdict(400, 12.0, spread, btc, 85, 112)
+v = verdict(400, 12.0, spread, btc, pct=85)
 check("busy leads on opens", v.lead_metric, "opens")
+check("busy headline", v.headline, f"400 new channels — a busy {DAY}.")
+check("busy highlight is the count", v.highlight, "400 new channels")
 check("busy gini phrasing", "running high" in v.subline, True)
 check("norm uses live window", "30-day norm" in v.subline, True)
 check("gini uses its own window", "last 112 days" in v.subline, True)
 
-v = rc.build_verdict(100, 190.0, flat, spread, 50, 112)
+v = verdict(100, 190.0, flat, spread)
 check("high capacity leads", v.lead_metric, "btc_in")
-check("high capacity copy", v.headline.endswith("entered Lightning overnight."), True)
+check("high capacity headline", v.headline, f"190.0 BTC entered Lightning on {DAY}.")
+check("high capacity highlight", v.highlight, "190.0 BTC")
 check("high capacity deviation positive", v.deviation > 0, True)
 
 # Regression: this branch used to narrate low capacity as low *activity*, quoting
 # a channel count that was sitting exactly on its median.
-v = rc.build_verdict(100, 1.0, flat, spread, 50, 112)
+v = verdict(100, 1.0, flat, spread)
 check("low capacity leads", v.lead_metric, "btc_in")
 check("low capacity talks capacity not activity", "capacity" in v.subline, True)
 
-v = rc.build_verdict(20, 10.0, spread, btc, 50, 112)
-check("low activity headline", v.headline, "Lighter than usual on Lightning.")
+v = verdict(20, 10.0, spread, btc)
+check("low activity headline", v.headline, f"{DAY} ran light on Lightning.")
 
 # Regression: the gini clause used to borrow the flow window and print "last 0 days".
-v = rc.build_verdict(110, 12.0, short, short, 0, 0)
+v = verdict(110, 12.0, short, short, pct=0, gini_days=0)
 check("no gini data omits clause", "last 0 days" in v.subline, False)
 
+# The frontend emphasises the headline by splitting it on `highlight`, so a
+# highlight that is not a substring would silently render as no emphasis.
+for label, vv in [("busy", verdict(400, 12.0, spread, btc)),
+                  ("high capacity", verdict(100, 190.0, flat, spread)),
+                  ("calibrating", verdict(110, 12.0, short, short))]:
+    if vv.highlight is not None and vv.highlight not in vv.headline:
+        fails.append(f"{label}: highlight {vv.highlight!r} not in headline")
+print("ok   every highlight is a substring of its headline")
+
 print("\n== language guard ==")
+# "night" is banned alongside the superlatives: the window is a 24h UTC day on a
+# global network, and the local date can differ from the UTC date by hours.
+check("night is banned", "night" in rc.BANNED_PHRASES, True)
 for phrase in rc.BANNED_PHRASES:
-    for vv in (rc.build_verdict(400, 99.0, spread, spread, 99, 112),
-               rc.build_verdict(100, 10.0, flat, btc, 20, 112),
-               rc.build_verdict(110, 12.0, short, short, 50, 112)):
+    for vv in (verdict(400, 99.0, spread, spread, pct=99),
+               verdict(100, 10.0, flat, btc, pct=20),
+               verdict(100, 1.0, flat, spread),
+               verdict(20, 10.0, spread, btc),
+               verdict(110, 12.0, short, short)):
         if phrase in (vv.headline + vv.subline).lower():
             fails.append(f"banned phrase {phrase!r} leaked into copy")
 print("ok   no banned phrase in any branch")
 
 print("\n== backfilled days must not reach the baseline ==")
 # Regression: 88 undercounted backfilled days dragged 'normal' 23% below the live
-# truth, which would have made every ordinary night read as above the norm.
+# truth, which would have made every ordinary day read as above the norm.
 backfilled = [89.0] * 88
 live = [117.0, 110.0, 123.0, 130.0, 97.0, 105.0, 120.0,
         112.0, 108.0, 125.0, 99.0, 118.0, 115.0, 121.0]
 check("mixed median is depressed", rc._median(backfilled + live), 89.0)
 check("live median is the real one", rc._median(live), 116.0)
-check("live baseline calls an ordinary night quiet",
-      rc.build_verdict(117, 30.0, live, [30.0] * 14, 50, 112).headline,
-      "Quiet night on Lightning.")
+check("live baseline calls an ordinary day quiet",
+      verdict(117, 30.0, live, [30.0] * 14).headline,
+      f"{DAY} was quiet on Lightning.")
 
 print("\n== bucket_by_day ==")
 clock2 = BlockClock({100: 1_700_000_000, 200: 1_700_086_400}, exact_from=150)

@@ -1,7 +1,7 @@
 """Daily report card: baselines, percentiles and the generated verdict.
 
 Baselines use median + MAD rather than mean + stddev because channel flow is
-spiky — a single mass-close night would drag a mean baseline for weeks.
+spiky — a single mass-close day would drag a mean baseline for weeks.
 
 The window length is derived from the data actually held, never hardcoded, so
 the generated copy grows with the archive instead of claiming a fixed 90 days.
@@ -40,7 +40,25 @@ MOVERS_MIN_BTC = 5.0
 MAD_TO_SIGMA = 0.6745
 
 # The archive is ~3 months. Never imply it is longer than it is.
-BANNED_PHRASES = ("record", "all-time", "all time", "first ever", "unprecedented")
+# "night" also covers "overnight" and "tonight": the window is a 24h UTC day and
+# Lightning is global, so there is no shared night to refer to. No legitimate word
+# in this copy contains the substring — "lightning" does not.
+BANNED_PHRASES = (
+    "record", "all-time", "all time", "first ever", "unprecedented", "night",
+)
+
+_WEEKDAYS = (
+    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+)
+
+
+def weekday_of(date: str) -> str:
+    """UTC weekday for a YYYY-MM-DD date, spelled out.
+
+    Read from a fixed tuple rather than strftime("%A") so generated copy cannot
+    change with the host's locale.
+    """
+    return _WEEKDAYS[datetime.fromisoformat(date).weekday()]
 
 
 def _median(values: list[float]) -> float:
@@ -83,8 +101,9 @@ def window_phrase(days: int) -> str:
 
 
 def _guard(text: str) -> str:
-    """The archive is short; superlatives would overclaim. Warn rather than fail —
-    a word choice should never take the endpoint down."""
+    """Enforce the copy rules: no superlatives the ~3-month archive cannot support,
+    and no night/overnight framing for a 24h UTC window on a global network.
+    Warns rather than fails — a word choice should never take the endpoint down."""
     lowered = text.lower()
     for phrase in BANNED_PHRASES:
         if phrase in lowered:
@@ -101,6 +120,18 @@ def _gini_clause(percentile: int, days: int) -> str:
     return f" Gini sits at the {percentile}th percentile of the last {days} days — {tail}"
 
 
+def _block_span(block_from: int, block_height: int) -> str:
+    """Opening clause naming the day's block range.
+
+    The range is what was actually measured, and unlike a wall-clock time it is
+    something a reader can go and verify. Empty when the range is unknown, which
+    is only true for days recorded before it was captured.
+    """
+    if block_from <= 0 or block_height <= 0 or block_from > block_height:
+        return ""
+    return f"Across blocks {block_from:,}–{block_height:,}, "
+
+
 def build_verdict(
     opens: int,
     btc_in: float,
@@ -108,31 +139,44 @@ def build_verdict(
     btc_in_series: list[float],
     gini_percentile: int,
     gini_days: int,
+    weekday: str,
+    block_from: int,
+    block_height: int,
 ) -> ReportVerdict:
     """Lead with whichever metric deviates most. If nothing clears the threshold,
     say it was quiet — do not manufacture significance.
 
+    Time is referenced by UTC weekday in the headline and block range in the
+    subline. Never "night" or "overnight": the window is a 24h UTC day and the
+    network is global, so there is no shared night — and the local date can differ
+    from the UTC date by hours, which is exactly how such copy goes wrong.
+
     `opens_series` and `btc_in_series` must contain **live-collected days only**.
     Backfilled days are systematically undercounted (only channels still open are
     visible), so mixing them in would pull the median down and make every ordinary
-    night read as busy. They are fine for drawing a trend, not for judging one.
+    day read as busy. They are fine for drawing a trend, not for judging one.
 
     `gini_days` is the separately collected network-metrics history, a genuinely
     different and longer window — the copy must not conflate the two.
     """
     frame = _gini_clause(gini_percentile, gini_days) if gini_days else ""
+    span = _block_span(block_from, block_height)
     live_days = len(opens_series)
+    highlight: str | None = None
 
     if live_days < MIN_LIVE_DAYS:
+        highlight = f"{opens:,} new channels"
         return ReportVerdict(
-            headline=_guard(f"{opens:,} channels opened in the last 24 hours."),
+            headline=_guard(f"{highlight} on {weekday}."),
             subline=_guard(
-                f"Carrying {btc_in:.1f} BTC of new capacity. Baseline still calibrating — "
-                f"{live_days} of {MIN_LIVE_DAYS} days collected live, so tonight is "
-                f"reported without comparison." + frame
+                span + f"{opens:,} channels opened carrying {btc_in:.1f} BTC of new "
+                f"capacity. Baseline still calibrating — {live_days} of "
+                f"{MIN_LIVE_DAYS} days collected live, so the day is reported "
+                f"without comparison." + frame
             ),
             lead_metric="opens",
             deviation=0.0,
+            highlight=highlight,
         )
 
     candidates = [
@@ -144,39 +188,42 @@ def build_verdict(
     norm = f"{live_days}-day norm"
 
     if abs(lead_deviation) < DEVIATION_THRESHOLD:
-        headline = "Quiet night on Lightning."
+        headline = f"{weekday} was quiet on Lightning."
         subline = (
-            f"Nothing moved more than a deviation from normal. {opens:,} channels "
-            f"opened, carrying {btc_in:.1f} BTC of new capacity." + frame
+            span + f"nothing moved more than a deviation from normal. {opens:,} "
+            f"channels opened, carrying {btc_in:.1f} BTC of new capacity." + frame
         )
     elif lead_metric == "btc_in":
         # Capacity is the outlier, so the copy must talk about capacity — the
         # channel count may well be sitting right on its median.
+        highlight = f"{btc_in:.1f} BTC"
         if lead_deviation > 0:
-            headline = f"{btc_in:.1f} BTC entered Lightning overnight."
+            headline = f"{highlight} entered Lightning on {weekday}."
             subline = (
-                f"{magnitude}σ above the {norm}, carried by a handful of large opens "
-                f"rather than broad activity. {opens:,} channels opened." + frame
+                span + f"that is {magnitude}σ above the {norm}, carried by a "
+                f"handful of large opens rather than broad activity. {opens:,} "
+                f"channels opened." + frame
             )
         else:
-            headline = f"New capacity ran thin — {btc_in:.1f} BTC."
+            headline = f"New capacity ran thin on {weekday} — {highlight}."
             subline = (
-                f"{magnitude}σ below the {norm} for capacity, though {opens:,} "
-                f"channels still opened. The night's channels were small ones."
-                + frame
+                span + f"that is {magnitude}σ below the {norm} for capacity, "
+                f"though {opens:,} channels still opened. The day's channels were "
+                f"small ones." + frame
             )
     else:
         if lead_deviation > 0:
-            headline = f"{opens:,} new channels — a busy night."
+            highlight = f"{opens:,} new channels"
+            headline = f"{highlight} — a busy {weekday}."
             subline = (
-                f"{magnitude}σ above the {norm}, adding {btc_in:.1f} BTC of capacity."
-                + frame
+                span + f"that is {magnitude}σ above the {norm}, adding "
+                f"{btc_in:.1f} BTC of capacity." + frame
             )
         else:
-            headline = "Lighter than usual on Lightning."
+            headline = f"{weekday} ran light on Lightning."
             subline = (
-                f"Activity ran {magnitude}σ below the {norm}. {opens:,} channels "
-                f"opened, carrying {btc_in:.1f} BTC." + frame
+                span + f"activity sat {magnitude}σ below the {norm}. {opens:,} "
+                f"channels opened, carrying {btc_in:.1f} BTC." + frame
             )
 
     return ReportVerdict(
@@ -184,6 +231,7 @@ def build_verdict(
         subline=_guard(subline),
         lead_metric=lead_metric,
         deviation=round(lead_deviation, 2),
+        highlight=highlight,
     )
 
 
@@ -280,9 +328,16 @@ async def get_daily_report() -> DailyReport | None:
     opens_median = _median(opens_series)
     btc_in_median = _median(btc_in_series)
 
+    block_height = today.get("block_height", 0)
+    # Days recorded before the range was captured have no block_from; the copy and
+    # the header both degrade to omitting the range rather than inventing one.
+    block_from = today.get("block_from", 0)
+
     return DailyReport(
         date=today["date"],
-        block_height=today.get("block_height", 0),
+        weekday=weekday_of(today["date"]),
+        block_from=block_from,
+        block_height=block_height,
         flow=ReportFlow(
             opens=today["opens"],
             btc_in=today["btc_in"],
@@ -304,6 +359,9 @@ async def get_daily_report() -> DailyReport | None:
             btc_in_series=btc_in_series,
             gini_percentile=gini.percentile if gini else 0,
             gini_days=len(gini.series) if gini else 0,
+            weekday=weekday_of(today["date"]),
+            block_from=block_from,
+            block_height=block_height,
         ),
         closes_available=False,
         coverage_note=(

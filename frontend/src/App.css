@@ -1326,3 +1326,30 @@
     font-size: 0.76rem;
   }
 }
+
+/* Weekday, UTC date, block range and the explicit 24h window — the card's time
+   reference. Stated in full because "night" would be wrong twice over: the window
+   is a UTC day, and Lightning is global. */
+.rc-stamp {
+  margin: -0.5rem 0 1rem;
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The one figure the headline turns on */
+.rc-hl {
+  color: var(--lightning);
+  text-shadow: 0 0 14px var(--lightning-glow);
+}
+
+@media (max-width: 640px) {
+  .rc-stamp {
+    font-size: 0.52rem;
+    letter-spacing: 0.07em;
+  }
+}
