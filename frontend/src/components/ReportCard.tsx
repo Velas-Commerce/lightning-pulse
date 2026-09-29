@@ -39,6 +39,36 @@ const fmtDayFull = (iso: string) => {
   return `${Number(d)} ${MONTHS[Number(m) - 1]} ${y}`;
 };
 
+/** Where the latest reading sits, and how far the window actually moved.
+ *
+ * A percentile alone is unitless: it says where in the range you are while saying
+ * nothing about whether the range is worth caring about. Those differ enormously
+ * here — Gini's whole 91-day range is 2.3% of its value, so "99th percentile" is a
+ * 1.1% move, while Capacity's range is 22.6% and its position means something. The
+ * change is shown alongside so the reader can tell the two cases apart.
+ *
+ * At the very edges the ordinal reads like a bug — the minimum scores exactly 0,
+ * and because only strictly-lower values count, the maximum scores 99 and never
+ * 100 — so those are stated in words instead.
+ */
+function positionOf(s: SlowIndex): string {
+  const n = s.series.length;
+  const last = s.series[n - 1];
+  // A percentile and a count are different units; "98th of 91" reads as nonsense.
+  if (last >= Math.max(...s.series)) return `highest of ${n} readings`;
+  if (last <= Math.min(...s.series)) return `lowest of ${n} readings`;
+  return `${ordinal(s.percentile)} percentile · ${n} readings`;
+}
+
+function changeOf(s: SlowIndex): string | null {
+  const first = s.series[0];
+  const last = s.series[s.series.length - 1];
+  if (!first) return null;
+  const pct = ((last - first) / Math.abs(first)) * 100;
+  if (!isFinite(pct)) return null;
+  return `${pct >= 0 ? "+" : "−"}${Math.abs(pct).toFixed(1)}%`;
+}
+
 /** Each slow index carries its own units; there is no sensible shared format. */
 function formatIndex(s: SlowIndex): string {
   switch (s.key) {
@@ -161,7 +191,8 @@ function VerdictStep({ report }: { report: DailyReport }) {
             </div>
             <Sparkline values={s.series} />
             <span className="rc-slow-caption">
-              <b>{ordinal(s.percentile)}</b> percentile · {s.series.length} readings
+              <b>{positionOf(s)}</b>
+              {changeOf(s) && ` · ${changeOf(s)}`}
               {/* Mempool-derived indices run weeks behind the day being reported;
                   say so rather than letting them pass as current. */}
               {s.stale_days > 2 && ` · as of ${fmtDay(s.as_of)}`}
