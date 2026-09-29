@@ -134,6 +134,10 @@ export type ReportFlow = {
   btc_out: number;
   net_channels: number;
   net_btc: number;
+  // Channel sizes in BTC, computed server-side. Median not mean — the distribution
+  // is skewed roughly 4:1 — and present even on days without hourly detail.
+  median_open: number;
+  largest_open: number;
   hourly: HourlyFlow[] | null; // null when block times were interpolated
 };
 

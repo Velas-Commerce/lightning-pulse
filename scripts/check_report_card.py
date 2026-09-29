@@ -18,6 +18,7 @@ from services.channel_flow import (  # noqa: E402
     BlockClock, bucket_by_day, decode_channel_id, open_events,
 )
 from services import channel_closes, report_card as rc  # noqa: E402
+from services.channel_flow import _median as median_sats  # noqa: E402
 
 fails: list[str] = []
 
@@ -232,6 +233,29 @@ days = bucket_by_day([(160, 100_000_000), (170, 50_000_000), (110, 200_000_000)]
 check("every event bucketed", sum(d["opens"] for d in days.values()), 3)
 check("interpolated day drops hourly",
       any(d["hourly"] is None for d in days.values()), True)
+
+print("\n== per-day channel sizes ==")
+check("median of odd count", median_sats([1, 5, 3]), 3)
+check("median of even count", median_sats([10, 20, 30, 40]), 25)
+check("median of nothing", median_sats([]), 0)
+
+clock3 = BlockClock({100: 1_700_000_000, 200: 1_700_086_400}, exact_from=150)
+# Deliberately skewed, the way real channel sizes are: one whale and four minnows.
+day3 = next(iter(bucket_by_day(
+    [(160, 10), (161, 20), (162, 30), (163, 40), (164, 100_000)], clock3).values()))
+check("median resists the whale", day3["median_sats"], 30)
+check("largest is the whale", day3["largest_sats"], 100_000)
+check("smallest is kept too", day3["smallest_sats"], 10)
+mean = day3["capacity_sats"] / day3["opens"]
+check("a mean would have been far off", mean > day3["median_sats"] * 100, True)
+
+# Sizes must survive on days whose hour-binning does not: interpolation costs us
+# *when* a channel opened, never *how big* it was. This was the actual bug — the
+# frontend fell back to a mean labelled "Median open" on 88 of 97 stored days.
+interp = next(iter(bucket_by_day([(110, 10), (111, 90)], clock3).values()))
+check("interpolated day drops hourly", interp["hourly"], None)
+check("interpolated day keeps its median", interp["median_sats"], 50)
+check("interpolated day keeps its largest", interp["largest_sats"], 90)
 
 print("\n" + ("ALL PASS" if not fails else f"{len(fails)} FAILURE(S):"))
 for f in fails:

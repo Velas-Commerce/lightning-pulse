@@ -106,6 +106,8 @@ def bucket_closes(closes: list[tuple[int, int]], clock: channel_flow.BlockClock)
         out[day] = {
             "closes": bucket["opens"],
             "btc_out": bucket["btc_in"],
+            "median_close_sats": bucket["median_sats"],
+            "largest_close_sats": bucket["largest_sats"],
             "hourly": (
                 [h["opens"] for h in bucket["hourly"]] if bucket["hourly"] else None
             ),

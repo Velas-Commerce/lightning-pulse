@@ -35,6 +35,22 @@ ANCHOR_SPACING = 144
 SECONDS_PER_BLOCK = 600
 
 
+def _median(values: list[int]) -> int:
+    """Median of a sorted-able list of sats.
+
+    Local rather than reusing report_card's, to keep this module free of a
+    dependency on the layer above it. Even counts take the mean of the two middle
+    values, matching the baseline maths.
+    """
+    if not values:
+        return 0
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) // 2
+
+
 def decode_channel_id(channel_id: str | int) -> tuple[int, int, int]:
     """Split a BOLT 7 short channel ID into (block_height, tx_index, output_index)."""
     value = int(channel_id)
@@ -143,10 +159,15 @@ def bucket_by_day(
                 "exact": True,
                 "max_height": height,
                 "min_height": height,
+                "caps": [],
             }
 
         day["opens"] += 1
         day["capacity_sats"] += capacity_sats
+        # Kept for every day, not just exactly-timed ones: interpolation costs us
+        # *when* a channel opened, never *how big* it was. Summary figures derived
+        # from these are therefore honest on every day in the archive.
+        day["caps"].append(capacity_sats)
         day["max_height"] = max(day["max_height"], height)
         day["min_height"] = min(day["min_height"], height)
 
@@ -170,6 +191,14 @@ def bucket_by_day(
         # stops meaning one thing.
         day["block_height"] = day.pop("max_height")
         day["block_from"] = day.pop("min_height")
+
+        caps = day.pop("caps")
+        # Median, not mean: the distribution is heavily skewed — a handful of large
+        # channels put the mean around 4x the median — so a mean would misrepresent
+        # a typical channel badly.
+        day["median_sats"] = _median(caps)
+        day["largest_sats"] = max(caps) if caps else 0
+        day["smallest_sats"] = min(caps) if caps else 0
         if not day["exact"]:
             day["hourly"] = None
         day.pop("exact")

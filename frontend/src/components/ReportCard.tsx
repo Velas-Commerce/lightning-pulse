@@ -94,12 +94,12 @@ function VerdictStep({ report }: { report: DailyReport }) {
   // backfilled days undercount, so until then no figure claims a comparison.
   const calibrating = baseline.live_days < 14;
 
-  const opens = flow.hourly ? flow.hourly.flatMap((h) => h.opens) : [];
-  const sorted = [...opens].sort((a, b) => a - b);
-  const medianOpen = sorted.length
-    ? sorted[Math.floor(sorted.length / 2)]
-    : flow.btc_in / Math.max(flow.opens, 1);
-  const largestOpen = sorted.length ? sorted[sorted.length - 1] : null;
+  // Read straight from the report rather than re-derived from `hourly`. Deriving
+  // them here meant falling back to btc_in / opens whenever hourly was absent —
+  // a *mean* under a "Median open" label, and the distribution is skewed about 4:1,
+  // so that was not a rounding difference. The backend now stores both per day.
+  const medianOpen = flow.median_open;
+  const largestOpen = flow.largest_open > 0 ? flow.largest_open : null;
 
   const figures: { key: string; value: string; sub: string; tone?: string }[] = [
     {
@@ -127,7 +127,9 @@ function VerdictStep({ report }: { report: DailyReport }) {
         : `vs ${baseline.btc_in_median.toFixed(1)} typical`,
       tone: "up",
     },
-    { key: "Median open", value: fmtCapacity(medianOpen), sub: "per channel" },
+    ...(medianOpen > 0
+      ? [{ key: "Median open", value: fmtCapacity(medianOpen), sub: "per channel" }]
+      : []),
     ...(largestOpen !== null
       ? [{ key: "Largest open", value: fmtCapacity(largestOpen), sub: "single channel" }]
       : []),

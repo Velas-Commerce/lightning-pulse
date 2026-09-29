@@ -18,7 +18,11 @@ from models import (
     ReportVerdict,
     SlowIndex,
 )
-from services.velocity import capacity_by_observed_day, get_velocity_history
+from services.velocity import (
+    SATS_PER_BTC,
+    capacity_by_observed_day,
+    get_velocity_history,
+)
 
 BASELINE_WINDOW_DAYS = 90
 
@@ -429,6 +433,8 @@ async def get_daily_report() -> DailyReport | None:
             btc_out=btc_out,
             net_channels=today["opens"] - closes,
             net_btc=round(today["btc_in"] - btc_out, 4),
+            median_open=round((today.get("median_sats") or 0) / SATS_PER_BTC, 8),
+            largest_open=round((today.get("largest_sats") or 0) / SATS_PER_BTC, 8),
             hourly=[
                 HourlyFlow(hour=h["hour"], opens=h["opens"], closes=h.get("closes") or [])
                 for h in hourly

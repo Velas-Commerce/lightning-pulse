@@ -129,6 +129,11 @@ class ReportFlow(BaseModel):
     btc_out: float
     net_channels: int
     net_btc: float
+    # Channel sizes in BTC. Median rather than mean: the distribution is skewed
+    # about 4:1, so a mean badly misrepresents a typical channel. Stored per day at
+    # collection time, so they hold even for days whose hourly detail is absent.
+    median_open: float
+    largest_open: float
     hourly: list[HourlyFlow] | None  # None when block times were interpolated
 
 
