@@ -124,6 +124,21 @@ check("low capacity talks capacity not activity", "capacity" in v.subline, True)
 v = verdict(20, 10.0, spread, btc)
 check("low activity headline", v.headline, f"{DAY} ran light on Lightning.")
 
+# Regression: a maximum reading was narrated as "the 99th percentile" (it can never
+# score 100), the size of the move was never stated, and the clause asserted that
+# "the graph grows" on no evidence at all.
+g_series = [0.830 + i * 0.0002 for i in range(90)]
+v = verdict(100, 10.0, flat, btc, pct=99, gini_days=90, gini_series=g_series)
+check("gini at max is stated in words", "highest in the last 90 days" in v.subline, True)
+check("gini at max avoids the percentile", "99th" in v.subline, False)
+check("gini states how little it moved", "moved only" in v.subline, True)
+check("gini makes no growth claim", "grows" in v.subline, False)
+v = verdict(100, 10.0, flat, btc, pct=0, gini_days=90, gini_series=g_series[::-1])
+check("gini at min is stated in words", "lowest in the last 90 days" in v.subline, True)
+v = verdict(100, 10.0, flat, btc, pct=55, gini_days=90,
+            gini_series=g_series + [0.8365])  # latest sits mid-range, not at an edge
+check("gini mid-range keeps the percentile", "55th percentile" in v.subline, True)
+
 # Regression: the gini clause used to borrow the flow window and print "last 0 days".
 v = verdict(110, 12.0, short, short, pct=0, gini_days=0)
 check("no gini data omits clause", "last 0 days" in v.subline, False)

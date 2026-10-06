@@ -115,13 +115,41 @@ def _guard(text: str) -> str:
     return text
 
 
-def _gini_clause(percentile: int, days: int) -> str:
-    tail = (
-        "concentration is running high even as the graph grows."
-        if percentile > CONCENTRATION_PERCENTILE
-        else "concentration is unremarkable for the period."
-    )
-    return f" Gini sits at the {percentile}th percentile of the last {days} days — {tail}"
+def _gini_clause(percentile: int, days: int, series: list[float] | None = None) -> str:
+    """Where Gini sits, and — when the series is known — how far it actually moved.
+
+    Two things this used to get wrong. At the edges a percentile reads as a bug (the
+    maximum scores 99, never 100), so the extremes are stated in words, matching the
+    panel. And a rank alone says nothing about size: Gini's whole range is a couple
+    of percent of its value, so "running high" needs that said beside it. There is
+    deliberately no claim about the graph growing — nothing here measures growth.
+    """
+    last = series[-1] if series else None
+    at_max = bool(series) and last >= max(series)
+    at_min = bool(series) and last <= min(series)
+
+    if at_max:
+        head = f"at its highest in the last {days} days"
+    elif at_min:
+        head = f"at its lowest in the last {days} days"
+    else:
+        head = f"at the {percentile}th percentile of the last {days} days"
+
+    if at_min:
+        tail = "concentration is at its lowest for the period"
+    elif percentile > CONCENTRATION_PERCENTILE:
+        tail = "concentration is running high"
+    else:
+        tail = "concentration is unremarkable for the period"
+
+    if series and last:
+        span_pct = (max(series) - min(series)) / abs(last) * 100
+        tail += (
+            f", though the whole window moved only {span_pct:.1f}%"
+            if span_pct < 5
+            else f", across a window that spans {span_pct:.1f}%"
+        )
+    return f" Gini sits {head} — {tail}."
 
 
 def _block_span(block_from: int, block_height: int) -> str:
@@ -151,6 +179,7 @@ def build_verdict(
     closes_series: list[float] | None = None,
     btc_out_series: list[float] | None = None,
     closes_known: bool = False,
+    gini_series: list[float] | None = None,
 ) -> ReportVerdict:
     """Lead with whichever metric deviates most. If nothing clears the threshold,
     say it was quiet — do not manufacture significance.
@@ -177,7 +206,7 @@ def build_verdict(
     closes_series = closes_series or []
     btc_out_series = btc_out_series or []
 
-    frame = _gini_clause(gini_percentile, gini_days) if gini_days else ""
+    frame = _gini_clause(gini_percentile, gini_days, gini_series) if gini_days else ""
     span = _block_span(block_from, block_height)
     live_days = len(opens_series)
     highlight: str | None = None
@@ -469,6 +498,7 @@ async def get_daily_report() -> DailyReport | None:
             closes_series=closes_series,
             btc_out_series=btc_out_series,
             closes_known=closes_known,
+            gini_series=gini.series if gini else None,
         ),
         closes_available=closes_known,
         coverage_note=(

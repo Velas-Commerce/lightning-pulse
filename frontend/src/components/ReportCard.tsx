@@ -118,7 +118,7 @@ function ReportCardSkeleton() {
 }
 
 function VerdictStep({ report }: { report: DailyReport }) {
-  const { flow, baseline, verdict, slow } = report;
+  const { flow, baseline, verdict } = report;
 
   // The baseline is only trustworthy once enough days were collected live;
   // backfilled days undercount, so until then no figure claims a comparison.
@@ -181,26 +181,25 @@ function VerdictStep({ report }: { report: DailyReport }) {
           </div>
         ))}
       </div>
-
-      <div className="rc-slow">
-        {slow.map((s) => (
-          <div className="rc-slow-item" key={s.key}>
-            <div className="rc-slow-head">
-              <span className="rc-slow-label">{s.label}</span>
-              <span className="rc-slow-value">{formatIndex(s)}</span>
-            </div>
-            <Sparkline values={s.series} />
-            <span className="rc-slow-caption">
-              <b>{positionOf(s)}</b>
-              {changeOf(s) && ` · ${changeOf(s)}`}
-              {/* Mempool-derived indices run weeks behind the day being reported;
-                  say so rather than letting them pass as current. */}
-              {s.stale_days > 2 && ` · as of ${fmtDay(s.as_of)}`}
-            </span>
-          </div>
-        ))}
-      </div>
     </>
+  );
+}
+
+/** One slow index on its own panel. */
+function SlowStep({ index: s }: { index: SlowIndex }) {
+  return (
+    <div className="rc-panel">
+      <span className="rc-slow-label">{s.label}</span>
+      <div className="rc-panel-value">{formatIndex(s)}</div>
+      <Sparkline values={s.series} />
+      <span className="rc-slow-caption">
+        <b>{positionOf(s)}</b>
+        {changeOf(s) && ` · ${changeOf(s)}`}
+        {/* Mempool-derived indices run weeks behind the day being reported;
+            say so rather than letting them pass as current. */}
+        {s.stale_days > 2 && ` · as of ${fmtDay(s.as_of)}`}
+      </span>
+    </div>
   );
 }
 
@@ -216,8 +215,17 @@ function ReportCard() {
       .catch(() => setUnavailable(true)); // 503: no database, or no complete day yet
   }, []);
 
-  // Flow and Shape steps push onto this; the nav appears on its own once they do.
-  const steps = report ? [{ key: "verdict", node: <VerdictStep report={report} /> }] : [];
+  // The nav appears on its own once there is more than one step.
+  const steps = report
+    ? [
+        { key: "verdict", label: "Verdict", node: <VerdictStep report={report} /> },
+        ...report.slow.map((s) => ({
+          key: s.key,
+          label: s.label,
+          node: <SlowStep index={s} />,
+        })),
+      ]
+    : [];
 
   // Nothing to say yet — stay out of the way rather than showing a broken card.
   if (unavailable) return null;
@@ -246,13 +254,17 @@ function ReportCard() {
         </span>
         {steps.length > 1 && (
           <span className="rc-nav">
+            <span className="rc-step-name">
+              {steps[step].label} · {step + 1}/{steps.length}
+            </span>
             <span className="rc-dots">
               {steps.map((s, i) => (
                 <button
                   key={s.key}
                   className={`rc-dot${i === step ? " rc-dot--active" : ""}`}
                   aria-current={i === step}
-                  aria-label={`Step ${i + 1}`}
+                  aria-label={s.label}
+                  title={s.label}
                   onClick={() => setStep(i)}
                 />
               ))}

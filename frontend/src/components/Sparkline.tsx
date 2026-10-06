@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 // Compact trend line for the report card's slow indices.
 //
@@ -6,7 +6,10 @@ import { useEffect, useState } from "react";
 // height, so at this width it renders ~92px tall, and its axes, tick labels and
 // crosshair are unconditional. Two cards depend on its exact rendering, so it is
 // left alone. The house draw-on idiom is shared though — pathLength=1 with an
-// ease-out cubic on requestAnimationFrame.
+// ease-out cubic on requestAnimationFrame. The line is revealed by a widening clip
+// rect rather than a stroke-dash draw-on: dashes combined with non-scaling-stroke are
+// measured in screen pixels while pathLength normalises in user units, so at any
+// width other than the viewBox's own the finished line came out dashed.
 //
 // Shape only, deliberately. There is no axis, no endpoint marker and no hover: the
 // line says which way the metric has been going, and the caption beneath it carries
@@ -25,6 +28,10 @@ export function Sparkline({ values }: { values: number[] }) {
   const padX = 1; // just enough that the stroke is not clipped at the edges
   const padY = 3;
 
+  // Several sparklines can be mounted at once; each needs its own clip id.
+  const clipId = `spark-clip-${useId().replace(/:/g, "")}`;
+
+  // Remaining distance of the reveal, 1 → 0.
   const [animOffset, setAnimOffset] = useState(1);
   useEffect(() => {
     const duration = 1200;
@@ -59,6 +66,11 @@ export function Sparkline({ values }: { values: number[] }) {
       style={{ width: "100%", height: "auto", display: "block" }}
       aria-hidden="true"
     >
+      <defs>
+        <clipPath id={clipId}>
+          <rect x={0} y={0} width={W * (1 - animOffset)} height={H} />
+        </clipPath>
+      </defs>
       <path
         d={d}
         fill="none"
@@ -67,9 +79,7 @@ export function Sparkline({ values }: { values: number[] }) {
         strokeLinecap="round"
         strokeLinejoin="round"
         vectorEffect="non-scaling-stroke"
-        pathLength={1}
-        strokeDasharray={1}
-        strokeDashoffset={animOffset}
+        clipPath={`url(#${clipId})`}
       />
     </svg>
   );

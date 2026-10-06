@@ -1161,14 +1161,31 @@
   gap: 0.5rem;
 }
 
+/* Names the current panel; the dots alone cannot say which is which. */
+.rc-step-name {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Nav controls are double the size of the shared .vt-btn they build on. */
+.rc-nav .vt-btn {
+  font-size: 1.12rem;
+  padding: 0.3rem 1rem;
+}
+
 .rc-dots {
   display: flex;
-  gap: 5px;
+  gap: 10px;
 }
 
 .rc-dot {
-  width: 6px;
-  height: 6px;
+  width: 12px;
+  height: 12px;
   padding: 0;
   border: none;
   border-radius: 50%;
@@ -1183,7 +1200,7 @@
 
 .rc-dot--active {
   background: var(--lightning);
-  box-shadow: 0 0 6px var(--lightning-glow);
+  box-shadow: 0 0 12px var(--lightning-glow);
 }
 
 .rc-headline {
@@ -1259,25 +1276,22 @@
   margin-top: 0.1rem;
 }
 
-.rc-slow {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 1rem;
-  border-top: 1px solid var(--separator);
-  padding-top: 1rem;
-}
-
-.rc-slow-item {
+/* One slow index per step. Capped in width so the sparkline (which scales to its
+   container) stays a line rather than becoming a tall wedge on wide cards. */
+.rc-panel {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.5rem;
+  max-width: 460px;
+  padding: 0.5rem 0 0.25rem;
 }
 
-.rc-slow-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 0.5rem;
+.rc-panel-value {
+  font-size: clamp(1.6rem, 3.2vw, 2.4rem);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  color: var(--lightning);
+  text-shadow: 0 0 14px var(--lightning-glow);
 }
 
 .rc-slow-label {
@@ -1288,14 +1302,8 @@
   color: var(--text-dim);
 }
 
-.rc-slow-value {
-  font-size: 0.8rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--text);
-}
-
 .rc-slow-caption {
-  font-size: 0.58rem;
+  font-size: 0.65rem;
   letter-spacing: 0.04em;
   color: var(--text-dim);
   opacity: 0.85;
@@ -1327,6 +1335,10 @@
 @media (max-width: 640px) {
   .report-card-row {
     padding: 0 1rem;
+  }
+  /* The larger nav no longer fits beside the title on a phone */
+  .report-card h2 {
+    flex-wrap: wrap;
   }
   .rc-subline {
     font-size: 0.76rem;
