@@ -154,6 +154,10 @@ export type ReportBaseline = {
   closes_mad: number;
   btc_out_median: number;
   btc_out_mad: number;
+  // Live days that carry per-day channel sizes; usually fewer than live_days
+  sizes_days: number;
+  median_open_typical: number; // BTC
+  largest_open_typical: number; // BTC
 };
 
 export type SlowIndex = {
@@ -164,6 +168,8 @@ export type SlowIndex = {
   series: number[];
   as_of: string; // date the value describes; mempool-derived ones run weeks behind
   stale_days: number;
+  analysis: string; // what the reading means, generated server-side
+  source: string; // where the figure comes from and how fresh it can be
 };
 
 export type ReportVerdict = {

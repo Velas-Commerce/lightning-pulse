@@ -1282,8 +1282,16 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  max-width: 460px;
   padding: 0.5rem 0 0.25rem;
+}
+
+/* Only the sparkline is width-capped; the analysis below it reads at full measure. */
+.rc-panel svg {
+  max-width: 460px;
+}
+
+.rc-panel-analysis {
+  margin-top: 0.4rem;
 }
 
 .rc-panel-value {

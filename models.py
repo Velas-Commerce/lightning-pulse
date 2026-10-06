@@ -150,6 +150,12 @@ class ReportBaseline(BaseModel):
     closes_mad: float
     btc_out_median: float
     btc_out_mad: float
+    # Per-day channel sizes are stored only from the day they began being recorded, so
+    # this count is usually shorter than live_days. Typical values are in BTC and are
+    # medians of the live days' own medians / largest, zero while sizes_days is zero.
+    sizes_days: int
+    median_open_typical: float
+    largest_open_typical: float
 
 
 class SlowIndex(BaseModel):
@@ -162,6 +168,10 @@ class SlowIndex(BaseModel):
     # our own, so the card labels them rather than implying they are current.
     as_of: str
     stale_days: int
+    # What the reading means in words, and where it comes from. Both are generated
+    # server-side, beside the verdict copy, so they share its tests and language guard.
+    analysis: str = ""
+    source: str = ""
 
 
 class ReportVerdict(BaseModel):

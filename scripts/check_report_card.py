@@ -272,6 +272,45 @@ check("interpolated day drops hourly", interp["hourly"], None)
 check("interpolated day keeps its median", interp["median_sats"], 50)
 check("interpolated day keeps its largest", interp["largest_sats"], 90)
 
+print("\n== per-panel analysis ==")
+from models import SlowIndex  # noqa: E402
+
+
+def slow(key, series, pct=50, stale=0, as_of="2026-10-06"):
+    return SlowIndex(key=key, label=key, value=series[-1], percentile=pct,
+                     series=series, as_of=as_of, stale_days=stale)
+
+
+rising = [0.830 + i * 0.0002 for i in range(90)]
+mid = rising[:-1] + [0.8365]
+a = rc.slow_analysis([slow("gini", rising, 99), slow("top10", rising, 99)])
+check("gini names the extreme in words", "more unequal than at any point in the last 90 days" in a["gini"], True)
+check("gini avoids the percentile at an edge", "99th" in a["gini"], False)
+check("gini says how little it moved", "moved only" in a["gini"], True)
+check("gini notes agreement with top-10", "both measures agree" in a["gini"], True)
+check("top10 notes agreement with gini", "both measures agree" in a["top10"], True)
+check("top10 states points moved", "up 1.8 points" in a["top10"], True)
+
+a = rc.slow_analysis([slow("gini", rising, 99), slow("top10", mid, 55)])
+check("gini edge without top-10 edge is called out", "not at the top of the node ranking" in a["gini"], True)
+check("top10 mid-range keeps the percentile", "55th percentile" in a["top10"], True)
+check("disagreement is not called agreement", "agree" in a["top10"], False)
+
+stale = [slow("capacity", [450e9, 440e9, 375e9], 0, stale=37, as_of="2026-08-30"),
+         slow("velocity", [3.8, 3.9, 3.98], 50, stale=37, as_of="2026-08-30")]
+a = rc.slow_analysis(stale)
+check("stale reading says so up front", a["capacity"].startswith("The latest reading is from 30 Aug, 37 days"), True)
+check("capacity at its low is stated in words", "lowest of the last 3 readings" in a["capacity"], True)
+check("velocity admits it restates capacity", "held constant" in a["velocity"], True)
+check("fresh reading carries no staleness note",
+      "days before" in rc.slow_analysis([slow("capacity", [1.0, 2.0, 1.5], 50)])["capacity"], False)
+
+check("ordinals: 11th 12th 13th 21st 102nd", [rc._ordinal(n) for n in (11, 12, 13, 21, 102)],
+      ["11th", "12th", "13th", "21st", "102nd"])
+every = " ".join(list(rc.slow_analysis([slow("gini", rising, 99), slow("top10", rising, 99)]).values())
+                 + list(a.values()) + list(rc.SLOW_SOURCES.values())).lower()
+check("copy passes the language guard", [p for p in rc.BANNED_PHRASES if p in every], [])
+
 print("\n" + ("ALL PASS" if not fails else f"{len(fails)} FAILURE(S):"))
 for f in fails:
     print("  -", f)

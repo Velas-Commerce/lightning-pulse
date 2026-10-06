@@ -7,6 +7,9 @@ import InfoTooltip from "./InfoTooltip";
 
 const SATS_PER_BTC = 100_000_000;
 
+// Mirrors MIN_LIVE_DAYS in services/report_card.py — keep both in sync.
+const MIN_LIVE_DAYS = 14;
+
 /** Capacity reads naturally in BTC when it is large and in sats when it is not. */
 function fmtCapacity(btc: number): string {
   if (btc >= 1) return `${btc.toFixed(2)} BTC`;
@@ -122,12 +125,20 @@ function VerdictStep({ report }: { report: DailyReport }) {
 
   // The baseline is only trustworthy once enough days were collected live;
   // backfilled days undercount, so until then no figure claims a comparison.
-  const calibrating = baseline.live_days < 14;
+  const calibrating = baseline.live_days < MIN_LIVE_DAYS;
 
   // Read straight from the report rather than re-derived from `hourly`. Deriving
   // them here meant falling back to btc_in / opens whenever hourly was absent —
   // a *mean* under a "Median open" label, and the distribution is skewed about 4:1,
   // so that was not a rounding difference. The backend now stores both per day.
+  // Sizes were stored later than counts, so they have their own, shorter history and
+  // their own calibration — live_days alone would claim a baseline that is not there.
+  const sizesReady = baseline.sizes_days >= MIN_LIVE_DAYS;
+  const sizeSub = (label: string, typical: number) =>
+    sizesReady
+      ? `vs ${fmtCapacity(typical)} typical`
+      : `${label} · ${baseline.sizes_days} of ${MIN_LIVE_DAYS} days`;
+
   const medianOpen = flow.median_open;
   const largestOpen = flow.largest_open > 0 ? flow.largest_open : null;
 
@@ -158,10 +169,22 @@ function VerdictStep({ report }: { report: DailyReport }) {
       tone: "up",
     },
     ...(medianOpen > 0
-      ? [{ key: "Median open", value: fmtCapacity(medianOpen), sub: "per channel" }]
+      ? [
+          {
+            key: "Median open",
+            value: fmtCapacity(medianOpen),
+            sub: sizeSub("per channel", baseline.median_open_typical),
+          },
+        ]
       : []),
     ...(largestOpen !== null
-      ? [{ key: "Largest open", value: fmtCapacity(largestOpen), sub: "single channel" }]
+      ? [
+          {
+            key: "Largest open",
+            value: fmtCapacity(largestOpen),
+            sub: sizeSub("single channel", baseline.largest_open_typical),
+          },
+        ]
       : []),
   ];
 
@@ -199,6 +222,7 @@ function SlowStep({ index: s }: { index: SlowIndex }) {
             say so rather than letting them pass as current. */}
         {s.stale_days > 2 && ` · as of ${fmtDay(s.as_of)}`}
       </span>
+      {s.analysis && <p className="rc-subline rc-panel-analysis">{s.analysis}</p>}
     </div>
   );
 }
@@ -218,11 +242,18 @@ function ReportCard() {
   // The nav appears on its own once there is more than one step.
   const steps = report
     ? [
-        { key: "verdict", label: "Verdict", node: <VerdictStep report={report} /> },
+        {
+          key: "verdict",
+          label: "Verdict",
+          node: <VerdictStep report={report} />,
+          // About opens and closes, so it belongs to this panel alone.
+          coverage: report.coverage_note,
+        },
         ...report.slow.map((s) => ({
           key: s.key,
           label: s.label,
           node: <SlowStep index={s} />,
+          coverage: s.source,
         })),
       ]
     : [];
@@ -291,7 +322,9 @@ function ReportCard() {
 
       {report ? steps[step].node : <ReportCardSkeleton />}
 
-      {report && <p className="rc-coverage">{report.coverage_note}</p>}
+      {report && steps[step].coverage && (
+        <p className="rc-coverage">{steps[step].coverage}</p>
+      )}
     </section>
   );
 }

@@ -339,6 +339,161 @@ def build_verdict(
     )
 
 
+_MONTHS = (
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+)
+
+# Where each index comes from. Shown in place of the card-wide coverage note, which
+# describes opens and closes and says nothing true about these four.
+SLOW_SOURCES = {
+    "gini": "Channel sizes from our own LND node's graph, snapshotted daily at 00:15 UTC.",
+    "top10": "Node capacity from our own LND node's graph, snapshotted daily at 00:15 UTC.",
+    "capacity": (
+        "Network capacity from mempool.space. Readings arrive irregularly and can run "
+        "weeks behind the day being reported."
+    ),
+    "velocity": (
+        "A hand-curated monthly volume estimate, held constant, over mempool.space "
+        "capacity at hourly BTC prices."
+    ),
+}
+
+
+def _ordinal(n: int) -> str:
+    if 11 <= n % 100 <= 13:
+        return f"{n}th"
+    return f"{n}{('th', 'st', 'nd', 'rd')[n % 10] if n % 10 < 4 else 'th'}"
+
+
+def _day_label(iso: str) -> str:
+    # From the ISO parts, never through a locale-aware formatter (see weekday_of).
+    _, m, d = iso.split("-")
+    return f"{int(d)} {_MONTHS[int(m) - 1]}"
+
+
+def _edge(series: list[float]) -> str | None:
+    """'max' or 'min' when the latest reading is the extreme of its window."""
+    if len(series) < 2:
+        return None
+    if series[-1] >= max(series):
+        return "max"
+    if series[-1] <= min(series):
+        return "min"
+    return None
+
+
+def _change_pct(series: list[float]) -> float | None:
+    if len(series) < 2 or not series[0]:
+        return None
+    return (series[-1] - series[0]) / abs(series[0]) * 100
+
+
+def _size_of_move(series: list[float]) -> str:
+    """How far the window moved, so a rank is never read without its scale."""
+    if not series or not series[-1]:
+        return ""
+    span = (max(series) - min(series)) / abs(series[-1]) * 100
+    return (
+        f"the whole window moved only {span:.1f}%"
+        if span < 5
+        else f"the window spans {span:.1f}%"
+    )
+
+
+def _staleness(s: SlowIndex) -> str:
+    if s.stale_days <= 2:
+        return ""
+    return (
+        f"The latest reading is from {_day_label(s.as_of)}, {s.stale_days} days "
+        f"before this report, so read it as a trend rather than a current figure. "
+    )
+
+
+def slow_analysis(indices: list[SlowIndex]) -> dict[str, str]:
+    """A sentence or two per slow index, keyed by index key.
+
+    Rank statements are made only about the window actually held and, as in the
+    verdict, the extremes are stated in words because a percentile can never reach
+    100. Gini and Top-10 are compared with each other, since agreement between two
+    independent measures says more than either does alone. Where an index has no
+    real signal the copy says so rather than inventing a story.
+    """
+    by_key = {s.key: s for s in indices}
+    out: dict[str, str] = {}
+
+    gini, top10 = by_key.get("gini"), by_key.get("top10")
+    g_edge = _edge(gini.series) if gini else None
+    t_edge = _edge(top10.series) if top10 else None
+
+    if gini:
+        n = len(gini.series)
+        if g_edge == "max":
+            lead = f"Channel sizes are more unequal than at any point in the last {n} days"
+        elif g_edge == "min":
+            lead = f"Channel sizes are more even than at any point in the last {n} days"
+        else:
+            lead = (
+                f"Channel-size inequality sits at the {_ordinal(gini.percentile)} "
+                f"percentile of the last {n} days"
+            )
+        text = f"{lead}; {_size_of_move(gini.series)}."
+        if top10 and g_edge and g_edge == t_edge:
+            text += " Top-10 share is at the same extreme, so both measures agree."
+        elif top10 and g_edge and t_edge is None:
+            text += (
+                " Top-10 share is not at an extreme, so the change is in how channel "
+                "sizes are spread, not at the top of the node ranking."
+            )
+        out["gini"] = text
+
+    if top10:
+        n = len(top10.series)
+        pts = (top10.series[-1] - top10.series[0]) * 100 if n > 1 else 0.0
+        move = f"{'up' if pts >= 0 else 'down'} {abs(pts):.1f} points over the window"
+        text = (
+            f"The ten largest nodes hold {top10.value * 100:.1f}% of node capacity, "
+            f"{move}"
+        )
+        if t_edge == "max":
+            text += f" and the most in the last {n} days."
+        elif t_edge == "min":
+            text += f" and the least in the last {n} days."
+        else:
+            text += f"; {_ordinal(top10.percentile)} percentile of the last {n} days."
+        if gini and t_edge and t_edge == g_edge:
+            text += " Gini is at the same extreme, so both measures agree."
+        out["top10"] = text
+
+    for key, subject in (("capacity", "Network capacity"), ("velocity", "Velocity")):
+        s = by_key.get(key)
+        if not s:
+            continue
+        n = len(s.series)
+        change = _change_pct(s.series)
+        edge = _edge(s.series)
+        if edge == "max":
+            rank = f"at its highest of the last {n} readings"
+        elif edge == "min":
+            rank = f"at its lowest of the last {n} readings"
+        else:
+            rank = f"at the {_ordinal(s.percentile)} percentile of {n} readings"
+        moved = (
+            f", {'up' if change >= 0 else 'down'} {abs(change):.1f}% across them"
+            if change is not None
+            else ""
+        )
+        text = _staleness(s) + f"{subject} sits {rank}{moved}."
+        if key == "velocity":
+            # The estimate is constant, so this is capacity and price restated.
+            text += (
+                " The volume estimate is held constant, so it moves only with capacity "
+                "and BTC price and says nothing new about payment activity."
+            )
+        out[key] = text
+
+    return out
+
+
 async def _slow_indices(database, window_days: int) -> list[SlowIndex]:
     """Percentile of the latest value within the window, for each slow-moving index.
 
@@ -399,7 +554,10 @@ async def _slow_indices(database, window_days: int) -> list[SlowIndex]:
             series=series,
             as_of=as_of,
             stale_days=stale_days,
+            source=SLOW_SOURCES.get(key, ""),
         ))
+    for key, text in slow_analysis(indices).items():
+        next(s for s in indices if s.key == key).analysis = _guard(text)
     return indices
 
 
@@ -431,6 +589,14 @@ async def get_daily_report() -> DailyReport | None:
     closed_live = [d for d in live if d.get("closes") is not None]
     closes_series = [float(d["closes"]) for d in closed_live]
     btc_out_series = [float(d.get("btc_out") or 0.0) for d in closed_live]
+
+    # Sizes began being stored after live collection did, so some live days lack them.
+    # Medians, not means: the size distribution is skewed roughly 4:1.
+    sized_live = [d for d in live if d.get("median_sats")]
+    median_open_typical = _median([d["median_sats"] / SATS_PER_BTC for d in sized_live])
+    largest_open_typical = _median(
+        [d["largest_sats"] / SATS_PER_BTC for d in sized_live if d.get("largest_sats")]
+    )
 
     slow = await _slow_indices(database, BASELINE_WINDOW_DAYS)
     gini = next((s for s in slow if s.key == "gini"), None)
@@ -481,6 +647,9 @@ async def get_daily_report() -> DailyReport | None:
             closes_mad=_mad(closes_series, closes_median),
             btc_out_median=btc_out_median,
             btc_out_mad=_mad(btc_out_series, btc_out_median),
+            sizes_days=len(sized_live),
+            median_open_typical=round(median_open_typical, 8),
+            largest_open_typical=round(largest_open_typical, 8),
         ),
         slow=slow,
         verdict=build_verdict(
