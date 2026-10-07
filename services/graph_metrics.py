@@ -4,7 +4,12 @@ from datetime import datetime, timedelta, timezone
 from models import NetworkMetrics
 from services import channel_closes, channel_flow
 from services.lnd import _client, LND_URL, get_graph_info
-from services.mempool import get_chain_tip, get_lightning_stats
+from services.mempool import (
+    STATS_MAX_AGE_DAYS,
+    get_chain_tip,
+    get_lightning_stats,
+    stats_age_days,
+)
 
 # The snapshot runs at a fixed UTC time rather than every 24 h from process start,
 # so restarts and deploys can't drift the sampling schedule the baselines rest on.
@@ -137,11 +142,29 @@ async def _persist_snapshot() -> None:
     documents = {
         "network_metrics": _cache.model_dump(),
         "graph_info": (await get_graph_info()).model_dump(),
-        "lightning_stats": (await get_lightning_stats()).latest.model_dump(),
     }
+
+    # mempool.space sometimes serves months-old rows even after retries (see
+    # services/mempool.py). A stale row would be stored as if it described today, and
+    # on a restart it would also overwrite the good row the 00:15 run wrote — so a
+    # row that is not recent is skipped rather than persisted.
+    stats = await get_lightning_stats()
+    if stats_age_days(stats) <= STATS_MAX_AGE_DAYS:
+        documents["lightning_stats"] = stats.latest.model_dump()
+    else:
+        print(
+            f"lightning_stats not persisted: freshest row is from "
+            f"{stats.latest.added[:10]}, {stats_age_days(stats)} days old"
+        )
+
     for collection, doc in documents.items():
         doc["recorded_at"] = now
         doc["date"] = day
+        if collection == "lightning_stats":
+            # Never replace the day's row with an older observation of the network.
+            existing = await database[collection].find_one({"date": day}, {"added": 1})
+            if existing and str(existing.get("added") or "") > str(doc["added"]):
+                continue
         # Upsert by UTC date: a restart refreshes the day's snapshot instead of
         # appending a second one. Documents written before `date` existed have no
         # date field, so they never match and are left untouched.

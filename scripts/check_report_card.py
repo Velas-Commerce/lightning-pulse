@@ -311,6 +311,28 @@ every = " ".join(list(rc.slow_analysis([slow("gini", rising, 99), slow("top10", 
                  + list(a.values()) + list(rc.SLOW_SOURCES.values())).lower()
 check("copy passes the language guard", [p for p in rc.BANNED_PHRASES if p in every], [])
 
+print("\n== mempool stats freshness ==")
+from datetime import datetime, timedelta, timezone  # noqa: E402
+from models import LightningStats, LightningStatsResponse  # noqa: E402
+from services import mempool  # noqa: E402
+
+# `latest` serves ISO text, the range endpoints a unix time; both must read as a date.
+check("added_date from ISO text", mempool.added_date("2026-10-06T00:00:00.000Z"), "2026-10-06")
+check("added_date from unix time", mempool.added_date(1791244800), "2026-10-06")
+
+
+def stats_row(days_old: int) -> LightningStatsResponse:
+    day = (datetime.now(timezone.utc) - timedelta(days=days_old)).strftime("%Y-%m-%d")
+    fields = {k: 0 for k in LightningStats.model_fields if k != "added"}
+    return LightningStatsResponse(latest=LightningStats(added=f"{day}T00:00:00.000Z", **fields))
+
+
+check("a row from yesterday is 1 day old", mempool.stats_age_days(stats_row(1)), 1)
+check("a 38-day-old row is over the persist limit",
+      mempool.stats_age_days(stats_row(38)) > mempool.STATS_MAX_AGE_DAYS, True)
+check("yesterday's row counts as fresh",
+      mempool.stats_age_days(stats_row(1)) <= mempool.STATS_FRESH_DAYS, True)
+
 print("\n" + ("ALL PASS" if not fails else f"{len(fails)} FAILURE(S):"))
 for f in fails:
     print("  -", f)

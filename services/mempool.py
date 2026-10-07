@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 from typing import Iterable
 
 import httpx
@@ -32,13 +33,84 @@ _tip_cache:     TTLCache = TTLCache(maxsize=1, ttl=300)  # chain tip height — 
 _block_time_cache: TTLCache = TTLCache(maxsize=4096, ttl=21600)
 
 
+# mempool.space serves its lightning statistics from several backends that disagree
+# about freshness: back-to-back calls to `statistics/latest` were measured returning
+# rows dated 13 Jul, 30 Aug and 6 Oct, and the range endpoints (`statistics/1m` …)
+# do the same — they only looked consistent when a burst of calls happened to land on
+# one backend. There is therefore no trustworthy reference for "fresh" to compare
+# against; the only defence is to draw more than once and keep the newest row.
+# Draws are parallel, and the retry round only runs if the first came up stale.
+STATS_FIRST_DRAWS = 3
+STATS_RETRY_DRAWS = 6
+
+# A row this recent (days before today, UTC) is as fresh as the data gets: the
+# newest row is dated the day before it is served. Older, and we draw again.
+STATS_FRESH_DAYS = 1
+
+# A lightning_stats row older than this is not worth persisting; see graph_metrics.
+STATS_MAX_AGE_DAYS = 3
+
+
+def added_date(added: int | str) -> str:
+    """UTC YYYY-MM-DD for a row's `added`, which is ISO text on `latest` and a unix
+    timestamp on the range endpoints."""
+    if isinstance(added, (int, float)):
+        return datetime.fromtimestamp(added, timezone.utc).strftime("%Y-%m-%d")
+    return str(added)[:10]
+
+
+async def get_stats_range(period: str = "1m") -> list[dict]:
+    """Rows from mempool's `statistics/{period}`, newest first, `added` as a unix time.
+
+    Thinner than `latest` (no id, node_count or avg/median fields), and subject to
+    the same backend lottery — see above.
+    """
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            MEMPOOL_BASE_URL + f"lightning/statistics/{period}", timeout=30.0
+        )
+        response.raise_for_status()
+        return response.json()
+
+
+async def _draw_latest(client: httpx.AsyncClient, draws: int) -> list[LightningStatsResponse]:
+    async def one() -> LightningStatsResponse:
+        response = await client.get(MEMPOOL_BASE_URL + "lightning/statistics/latest")
+        response.raise_for_status()
+        return LightningStatsResponse(**response.json())
+
+    results = await asyncio.gather(*(one() for _ in range(draws)), return_exceptions=True)
+    rows = [r for r in results if isinstance(r, LightningStatsResponse)]
+    if not rows:
+        raise next(r for r in results if isinstance(r, BaseException))
+    return rows
+
+
 async def get_lightning_stats() -> LightningStatsResponse:
+    """The freshest `latest` row mempool will give us. See STATS_FIRST_DRAWS."""
     if "result" not in _stats_cache:
+        best: LightningStatsResponse | None = None
         async with httpx.AsyncClient() as client:
-            response = await client.get(MEMPOOL_BASE_URL + "lightning/statistics/latest")
-            response.raise_for_status()
-            _stats_cache["result"] = LightningStatsResponse(**response.json())
+            for draws in (STATS_FIRST_DRAWS, STATS_RETRY_DRAWS):
+                for row in await _draw_latest(client, draws):
+                    if best is None or added_date(row.latest.added) > added_date(best.latest.added):
+                        best = row
+                if stats_age_days(best) <= STATS_FRESH_DAYS:
+                    break
+            else:
+                print(
+                    f"mempool: no fresh lightning stats after "
+                    f"{STATS_FIRST_DRAWS + STATS_RETRY_DRAWS} draws "
+                    f"(best is {added_date(best.latest.added)})"
+                )
+        _stats_cache["result"] = best
     return _stats_cache["result"]
+
+
+def stats_age_days(stats: LightningStatsResponse) -> int:
+    """How many days before today the row describes."""
+    added = datetime.fromisoformat(added_date(stats.latest.added)).date()
+    return (datetime.now(timezone.utc).date() - added).days
 
 
 async def get_nodes_per_country() -> list[NodesPerCountry]:
