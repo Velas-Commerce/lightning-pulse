@@ -60,31 +60,34 @@ def capacity_by_observed_day(docs: list[dict]) -> list[tuple[str, int]]:
 
 
 def merge_capacity(
-    mempool: list[tuple[str, int]], lnd: list[tuple[str, int]]
+    mempool: list[tuple[str, int]], snapshots: list[tuple[str, int]]
 ) -> list[tuple[str, int]]:
     """One capacity series across the change of source.
 
-    From the first reading taken on our own node, that node is the only source.
-    Mempool points from that day on are dropped, not averaged: the two methods
-    disagree by a small constant step, and blending would smear the seam. The
-    mempool points before it are kept as they are.
+    `snapshots` is everything in capacity_snapshots: our own node's readings and the
+    imported history behind them, one per date, our node winning where both exist
+    (that is enforced by the one-per-date key, not here). Mempool is only the fallback
+    for dates before the first snapshot. Its points from there on are dropped, not
+    averaged: the methods disagree by a small constant step, and blending would smear
+    the seam.
     """
-    if not lnd:
+    if not snapshots:
         return mempool
-    switchover = lnd[0][0]
-    return [p for p in mempool if p[0] < switchover] + lnd
+    switchover = snapshots[0][0]
+    return [p for p in mempool if p[0] < switchover] + snapshots
 
 
 async def load_capacity_series(database) -> list[tuple[str, int]]:
-    """Ascending (YYYY-MM-DD, sats): mempool history, then our own node's readings."""
+    """Ascending (YYYY-MM-DD, sats): mempool only before the first snapshot, then the
+    snapshots (imported history, then our own node's readings)."""
     stats = await database["lightning_stats"].find(
         {}, {"_id": 0, "added": 1, "total_capacity": 1},
     ).to_list(length=None)
     readings = await database["capacity_snapshots"].find(
         {}, {"_id": 0, "date": 1, "total_capacity": 1},
     ).sort("date", 1).to_list(length=None)
-    lnd = [(r["date"], r["total_capacity"]) for r in readings if r.get("total_capacity")]
-    return merge_capacity(capacity_by_observed_day(stats), lnd)
+    snapshots = [(r["date"], r["total_capacity"]) for r in readings if r.get("total_capacity")]
+    return merge_capacity(capacity_by_observed_day(stats), snapshots)
 
 
 async def get_velocity_history(days: int) -> list[VelocityHistoryEntry] | None:

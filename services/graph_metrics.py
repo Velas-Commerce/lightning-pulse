@@ -161,6 +161,7 @@ async def _persist_snapshot() -> None:
         doc["recorded_at"] = now
         doc["date"] = day
         if collection == "lightning_stats":
+            doc["source"] = "mempool"
             # Never replace the day's row with an older observation of the network.
             existing = await database[collection].find_one({"date": day}, {"added": 1})
             if existing and str(existing.get("added") or "") > str(doc["added"]):

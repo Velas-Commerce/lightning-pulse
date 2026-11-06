@@ -371,6 +371,48 @@ check("readings replace mempool from the switchover day, keeping what came befor
       merge_capacity(mem, [("2026-11-05", 20), ("2026-11-06", 21)]),
       [("2026-08-30", 10), ("2026-10-06", 11), ("2026-11-05", 20), ("2026-11-06", 21)])
 
+print("\n== imported capacity history ==")
+from services.capacity_import import (  # noqa: E402
+    CARRIED, INTERPOLATED, flag_quality, parse_rows,
+)
+
+csv_text = '"DateTime","BTC","USD"\n' + "\n".join(
+    f'"{d} 00:00:00",{b},1.0' for d, b in [
+        ("2020-01-01", "100.00000001"),
+        ("2020-01-02", ""),                 # blank: no reading, omitted
+        ("2020-01-03", "101.5"),
+        ("2020-01-04", "101.5"),            # repeated: carried forward
+        ("2020-01-05", "101.5"),
+        ("2020-01-06", "103.0"),
+        ("2020-01-07", "104.0"),            # 103 -> 104 -> 105 -> 106: one straight line
+        ("2020-01-08", "105.0"),
+        ("2020-01-09", "106.0"),
+        ("2020-01-10", "107.3"),
+        ("2020-01-11", "106.1"),
+    ]
+)
+parsed = parse_rows(csv_text)
+check("BTC converts to sats exactly, not via float", parsed[0], ("2020-01-01", 10_000_000_001))
+check("a blank cell parses as no reading", parsed[1], ("2020-01-02", None))
+
+flagged = flag_quality(parsed)
+check("blank days are omitted", [d for d, _, _ in flagged].count("2020-01-02"), 0)
+by_date = {d: q for d, _, q in flagged}
+check("a day equal to the one before is carried forward",
+      (by_date["2020-01-04"], by_date["2020-01-05"]), (CARRIED, CARRIED))
+check("the first of a flat run is a real reading", by_date["2020-01-03"], None)
+check("the interior of a straight line is interpolated",
+      (by_date["2020-01-07"], by_date["2020-01-08"]), (INTERPOLATED, INTERPOLATED))
+check("both ends of a straight line are real readings",
+      (by_date["2020-01-06"], by_date["2020-01-09"]), (None, None))
+check("ordinary movement is left unflagged",
+      (by_date["2020-01-10"], by_date["2020-01-11"]), (None, None))
+check("two equal steps are not enough to call a line",
+      [q for _, _, q in flag_quality(
+          [(d, v * 100_000_000) for d, v in (("a", 100), ("b", 110), ("c", 120), ("d", 135))]
+      )],
+      [None, None, None, None])
+
 print("\n" + ("ALL PASS" if not fails else f"{len(fails)} FAILURE(S):"))
 for f in fails:
     print("  -", f)

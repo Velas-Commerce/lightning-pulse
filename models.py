@@ -23,15 +23,24 @@ class LightningStats(BaseModel):
 
 
 class CapacityReading(BaseModel):
-    """One daily reading of the network taken from our own LND node's graph."""
+    """One daily reading of network capacity, dated by the start of the UTC day.
+
+    Taken from our own LND node's graph (`source="lnd"`) or, for history before the
+    node started recording, imported from BitcoinVisuals.com (`source="bitcoinvisuals"`).
+    Imported days carry capacity only, so the other measures are None there.
+    """
     date: str
     total_capacity: int
-    active_capacity: int
-    channel_count: int
-    node_count: int
-    block_height: int
     recorded_at: datetime
     source: str = "lnd"
+    active_capacity: int | None = None
+    channel_count: int | None = None
+    node_count: int | None = None
+    block_height: int | None = None
+    # How far to trust an imported day: "carried_forward" (the source repeated its
+    # last value) or "interpolated" (a straight line between two real readings).
+    # None is a plain observation, which is every reading our own node takes.
+    quality: str | None = None
 
 
 class LightningStatsResponse(BaseModel):

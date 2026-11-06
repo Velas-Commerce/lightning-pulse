@@ -349,12 +349,13 @@ SLOW_SOURCES = {
     "gini": "Channel sizes from our own LND node's graph, snapshotted daily at 00:15 UTC.",
     "top10": "Node capacity from our own LND node's graph, snapshotted daily at 00:15 UTC.",
     "capacity": (
-        "Network capacity from mempool.space. Readings arrive irregularly and can run "
-        "weeks behind the day being reported."
+        "Network capacity from our own LND node's graph, read daily at 00:15 UTC. "
+        "Earlier days come from BitcoinVisuals.com's daily history, which is a "
+        "different method, so expect a small step where the two meet."
     ),
     "velocity": (
-        "A hand-curated monthly volume estimate, held constant, over mempool.space "
-        "capacity at hourly BTC prices."
+        "A hand-curated monthly volume estimate, held constant, over the capacity "
+        "series above at hourly BTC prices from mempool.space."
     ),
 }
 
