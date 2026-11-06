@@ -333,6 +333,44 @@ check("a 38-day-old row is over the persist limit",
 check("yesterday's row counts as fresh",
       mempool.stats_age_days(stats_row(1)) <= mempool.STATS_FRESH_DAYS, True)
 
+print("\n== capacity from our own node ==")
+from services.capacity import ACTIVE_WINDOW_DAYS, compute_capacity  # noqa: E402
+from services.velocity import merge_capacity  # noqa: E402
+
+now = datetime(2026, 11, 5, 12, 0, tzinfo=timezone.utc)
+ts = int(now.timestamp())
+day = 86400
+
+
+def edge(cap, a, b, u1=None, u2=None):
+    return {
+        "capacity": str(cap), "node1_pub": a, "node2_pub": b,
+        "node1_policy": {"last_update": u1} if u1 is not None else None,
+        "node2_policy": {"last_update": u2} if u2 is not None else None,
+    }
+
+
+graph = {"edges": [
+    edge(100, "a", "b", ts - day, None),                             # one side fresh: active
+    edge(200, "b", "c", None, ts - (ACTIVE_WINDOW_DAYS + 1) * day),  # stale: not active
+    edge(400, "a", "c"),                                             # no policies at all
+    edge(800, "d", "e", ts - 2 * day, ts - 90 * day),                # one fresh side is enough
+]}
+r = compute_capacity(graph, 970000, now)
+check("total capacity sums every edge once", r.total_capacity, 1500)
+check("active needs only one side updated in the window", r.active_capacity, 900)
+check("channel count is the edge count", r.channel_count, 4)
+check("nodes are the unique endpoints", r.node_count, 5)
+check("reading is dated by UTC day", r.date, "2026-11-05")
+check("an empty graph reads as zero, not an error",
+      compute_capacity({}, 1, now).total_capacity, 0)
+
+mem = [("2026-08-30", 10), ("2026-10-06", 11), ("2026-11-05", 12)]
+check("no readings: mempool history is untouched", merge_capacity(mem, []), mem)
+check("readings replace mempool from the switchover day, keeping what came before",
+      merge_capacity(mem, [("2026-11-05", 20), ("2026-11-06", 21)]),
+      [("2026-08-30", 10), ("2026-10-06", 11), ("2026-11-05", 20), ("2026-11-06", 21)])
+
 print("\n" + ("ALL PASS" if not fails else f"{len(fails)} FAILURE(S):"))
 for f in fails:
     print("  -", f)

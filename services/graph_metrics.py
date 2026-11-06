@@ -2,7 +2,7 @@ import asyncio
 import db
 from datetime import datetime, timedelta, timezone
 from models import NetworkMetrics
-from services import channel_closes, channel_flow
+from services import capacity, channel_closes, channel_flow
 from services.lnd import _client, LND_URL, get_graph_info
 from services.mempool import (
     STATS_MAX_AGE_DAYS,
@@ -265,6 +265,13 @@ async def refresh_metrics() -> None:
         response.raise_for_status()
         graph = response.json()
     _cache = _compute(graph)
+    try:
+        reading = await capacity.take_reading(graph)
+        if reading is not None:
+            await capacity.persist(reading)
+    except Exception as e:
+        # Capacity is its own reading; it must not cost us the metrics snapshot.
+        print(f"capacity reading failed: {e}")
     await _persist_snapshot()
     try:
         await _persist_flow(graph)

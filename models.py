@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 from typing import Dict
 
@@ -18,6 +20,18 @@ class LightningStats(BaseModel):
     med_fee_rate: int
     med_base_fee_mtokens: int
     clearnet_tor_nodes: int
+
+
+class CapacityReading(BaseModel):
+    """One daily reading of the network taken from our own LND node's graph."""
+    date: str
+    total_capacity: int
+    active_capacity: int
+    channel_count: int
+    node_count: int
+    block_height: int
+    recorded_at: datetime
+    source: str = "lnd"
 
 
 class LightningStatsResponse(BaseModel):

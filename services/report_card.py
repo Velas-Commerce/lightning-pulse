@@ -20,8 +20,8 @@ from models import (
 )
 from services.velocity import (
     SATS_PER_BTC,
-    capacity_by_observed_day,
     get_velocity_history,
+    load_capacity_series,
 )
 
 BASELINE_WINDOW_DAYS = 90
@@ -515,11 +515,8 @@ async def _slow_indices(database, window_days: int) -> list[SlowIndex]:
     metric_days = [metrics_by_day[k] for k in sorted(metrics_by_day)]
     metrics_as_of = max(metrics_by_day, default=today.isoformat())
 
-    stats = await database["lightning_stats"].find(
-        {}, {"_id": 0, "added": 1, "total_capacity": 1},
-    ).to_list(length=None)
     cutoff = since.strftime("%Y-%m-%d")
-    capacity_obs = [(a, c) for a, c in capacity_by_observed_day(stats) if a >= cutoff]
+    capacity_obs = [(a, c) for a, c in await load_capacity_series(database) if a >= cutoff]
     capacity_as_of = capacity_obs[-1][0] if capacity_obs else today.isoformat()
 
     velocity_entries = await get_velocity_history(window_days) or []

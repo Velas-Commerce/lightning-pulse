@@ -6,16 +6,23 @@ import db
 from models import LiquidityVelocity, VelocityHistoryEntry
 from services.mempool import get_lightning_stats, get_btc_price, get_historical_prices
 from services.growth_stats import get_lightning_growth_stats
+from services.capacity import get_latest_reading
 
 SATS_PER_BTC = 100_000_000
 
 
 async def get_liquidity_velocity() -> LiquidityVelocity:
-    stats, price = await asyncio.gather(get_lightning_stats(), get_btc_price())
+    price = await get_btc_price()
 
     latest_volume = get_lightning_growth_stats().monthly_volume[-1]
 
-    capacity_sats = stats.latest.total_capacity
+    # Our own node's reading; mempool only until the first one has been taken.
+    reading = get_latest_reading()
+    capacity_sats = (
+        reading.total_capacity
+        if reading is not None
+        else (await get_lightning_stats()).latest.total_capacity
+    )
     btc_price_usd = price.USD
     capacity_usd = (capacity_sats / SATS_PER_BTC) * btc_price_usd
     velocity = latest_volume.volume_usd / capacity_usd
@@ -52,6 +59,34 @@ def capacity_by_observed_day(docs: list[dict]) -> list[tuple[str, int]]:
     return sorted(by_added.items())
 
 
+def merge_capacity(
+    mempool: list[tuple[str, int]], lnd: list[tuple[str, int]]
+) -> list[tuple[str, int]]:
+    """One capacity series across the change of source.
+
+    From the first reading taken on our own node, that node is the only source.
+    Mempool points from that day on are dropped, not averaged: the two methods
+    disagree by a small constant step, and blending would smear the seam. The
+    mempool points before it are kept as they are.
+    """
+    if not lnd:
+        return mempool
+    switchover = lnd[0][0]
+    return [p for p in mempool if p[0] < switchover] + lnd
+
+
+async def load_capacity_series(database) -> list[tuple[str, int]]:
+    """Ascending (YYYY-MM-DD, sats): mempool history, then our own node's readings."""
+    stats = await database["lightning_stats"].find(
+        {}, {"_id": 0, "added": 1, "total_capacity": 1},
+    ).to_list(length=None)
+    readings = await database["capacity_snapshots"].find(
+        {}, {"_id": 0, "date": 1, "total_capacity": 1},
+    ).sort("date", 1).to_list(length=None)
+    lnd = [(r["date"], r["total_capacity"]) for r in readings if r.get("total_capacity")]
+    return merge_capacity(capacity_by_observed_day(stats), lnd)
+
+
 async def get_velocity_history(days: int) -> list[VelocityHistoryEntry] | None:
     """Derive velocity per observed day from the lightning_stats capacity snapshots
     joined with historical BTC prices, holding the latest monthly-volume estimate
@@ -65,12 +100,8 @@ async def get_velocity_history(days: int) -> list[VelocityHistoryEntry] | None:
     if database is None:
         return None
 
-    docs = await database["lightning_stats"].find(
-        {}, {"_id": 0, "added": 1, "total_capacity": 1},
-    ).to_list(length=None)
-
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
-    observations = [(a, c) for a, c in capacity_by_observed_day(docs) if a >= cutoff]
+    observations = [(a, c) for a, c in await load_capacity_series(database) if a >= cutoff]
 
     prices = await get_historical_prices()
     pairs = sorted((p.time, p.USD) for p in prices)  # ascending for bisect
