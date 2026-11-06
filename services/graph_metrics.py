@@ -148,14 +148,22 @@ async def _persist_snapshot() -> None:
     # services/mempool.py). A stale row would be stored as if it described today, and
     # on a restart it would also overwrite the good row the 00:15 run wrote — so a
     # row that is not recent is skipped rather than persisted.
-    stats = await get_lightning_stats()
-    if stats_age_days(stats) <= STATS_MAX_AGE_DAYS:
-        documents["lightning_stats"] = stats.latest.model_dump()
+    #
+    # The call can also fail outright (mempool.space and its mirror both down). That
+    # must not cost the day's network_metrics and graph_info, which come from our own
+    # node and are already in `documents`; only the mempool row is skipped.
+    try:
+        stats = await get_lightning_stats()
+    except Exception as e:
+        print(f"lightning_stats not persisted: mempool unavailable ({type(e).__name__}: {e})")
     else:
-        print(
-            f"lightning_stats not persisted: freshest row is from "
-            f"{stats.latest.added[:10]}, {stats_age_days(stats)} days old"
-        )
+        if stats_age_days(stats) <= STATS_MAX_AGE_DAYS:
+            documents["lightning_stats"] = stats.latest.model_dump()
+        else:
+            print(
+                f"lightning_stats not persisted: freshest row is from "
+                f"{stats.latest.added[:10]}, {stats_age_days(stats)} days old"
+            )
 
     for collection, doc in documents.items():
         doc["recorded_at"] = now

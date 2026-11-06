@@ -413,6 +413,72 @@ check("two equal steps are not enough to call a line",
       )],
       [None, None, None, None])
 
+print("\n== mempool mirror fallback ==")
+import asyncio  # noqa: E402
+import httpx  # noqa: E402
+
+PRIMARY, MIRROR = mempool.MEMPOOL_HOSTS[0], mempool.MEMPOOL_HOSTS[1]
+
+
+async def fetch_with(handler, path="v1/prices"):
+    mempool._host_down_until.clear()
+    seen: list[str] = []
+
+    def wrapped(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.host)
+        return handler(request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(wrapped)) as client:
+        try:
+            response = await mempool._get(client, path)
+            return response.json(), seen
+        except Exception as e:  # noqa: BLE001
+            return type(e).__name__, seen
+
+
+def primary_down(request):
+    if request.url.host == "mempool.space":
+        raise httpx.ConnectTimeout("down", request=request)
+    return httpx.Response(200, json={"from": "mirror"})
+
+
+got, seen = asyncio.run(fetch_with(primary_down))
+check("primary unreachable: the mirror answers", got, {"from": "mirror"})
+check("primary is tried first, then the mirror", seen, ["mempool.space", "mempool.emzy.de"])
+
+got, seen = asyncio.run(fetch_with(lambda r: httpx.Response(503) if r.url.host == "mempool.space"
+                                   else httpx.Response(200, json={"from": "mirror"})))
+check("a 5xx from the primary also falls over", got, {"from": "mirror"})
+
+got, seen = asyncio.run(fetch_with(lambda r: httpx.Response(404)))
+check("a 404 is raised, not retried on the mirror", (got, seen), ("HTTPStatusError", ["mempool.space"]))
+
+got, seen = asyncio.run(fetch_with(lambda r: httpx.Response(200, json={"from": r.url.host})))
+check("healthy primary: the mirror is never touched", (got, seen), ({"from": "mempool.space"}, ["mempool.space"]))
+
+got, seen = asyncio.run(fetch_with(lambda r: (_ for _ in ()).throw(httpx.ConnectError("down", request=r))))
+check("both down: the error surfaces", (got, seen), ("ConnectError", ["mempool.space", "mempool.emzy.de"]))
+
+
+async def second_call_skips_dead_host():
+    mempool._host_down_until.clear()
+    seen: list[str] = []
+
+    def handler(request):
+        seen.append(request.url.host)
+        return primary_down(request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        await mempool._get(client, "v1/prices")
+        seen.clear()
+        await mempool._get(client, "v1/prices")
+    return seen
+
+
+check("a host that just failed is not retried first on the next call",
+      asyncio.run(second_call_skips_dead_host()), ["mempool.emzy.de"])
+mempool._host_down_until.clear()
+
 print("\n" + ("ALL PASS" if not fails else f"{len(fails)} FAILURE(S):"))
 for f in fails:
     print("  -", f)

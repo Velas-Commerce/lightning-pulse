@@ -1,4 +1,5 @@
 import asyncio
+import time
 from datetime import datetime, timezone
 from typing import Iterable
 
@@ -13,8 +14,17 @@ from models import LightningStatsResponse, NodesPerCountry, LargestNode, BtcPric
 # curl -sSL "https://mempool.space/api/blocks/tip/height"
 # curl -sSL "https://mempool.space/api/v1/blocks/913548"
 
-MEMPOOL_BASE_URL = "https://mempool.space/api/v1/"
-MEMPOOL_API_URL = "https://mempool.space/api/"
+# Tried in order. mempool.space is the primary; mempool.emzy.de is a public mirror
+# that serves the same API, used only when the primary cannot be reached. It is a
+# third party, so nothing here should be written to depend on it being there.
+MEMPOOL_HOSTS = ("https://mempool.space", "https://mempool.emzy.de")
+
+# A host that just failed is tried last for this long, so a dead primary costs one
+# connect timeout, not one per call (close detection alone makes hundreds).
+HOST_RETRY_AFTER_SECONDS = 300.0
+CONNECT_TIMEOUT_SECONDS = 5.0
+
+_host_down_until: dict[str, float] = {}
 
 # One /v1/blocks/{height} call returns this many blocks, counting down from height.
 BLOCKS_PER_CALL = 15
@@ -59,6 +69,48 @@ def added_date(added: int | str) -> str:
     return str(added)[:10]
 
 
+def _hosts_in_order() -> list[str]:
+    """Hosts not recently down first, in configured order; recently failed ones last."""
+    now = time.monotonic()
+    up = [h for h in MEMPOOL_HOSTS if _host_down_until.get(h, 0.0) <= now]
+    down = [h for h in MEMPOOL_HOSTS if h not in up]
+    return up + down
+
+
+async def _get(
+    client: httpx.AsyncClient, path: str, timeout: float = 10.0
+) -> httpx.Response:
+    """GET `path` (relative to /api/, e.g. "v1/prices") with fallback to the mirror.
+
+    Falls over on a connection failure, a timeout or a 5xx. A 4xx is the server
+    answering, so it is raised as it stands rather than asked again elsewhere.
+    """
+    last: Exception | None = None
+    for host in _hosts_in_order():
+        try:
+            response = await client.get(
+                f"{host}/api/{path}",
+                timeout=httpx.Timeout(timeout, connect=CONNECT_TIMEOUT_SECONDS),
+            )
+            if response.status_code >= 500:
+                raise httpx.HTTPStatusError(
+                    f"{response.status_code} from {host}",
+                    request=response.request, response=response,
+                )
+            response.raise_for_status()
+        except (httpx.TransportError, httpx.HTTPStatusError) as e:
+            if isinstance(e, httpx.HTTPStatusError) and e.response.status_code < 500:
+                raise
+            _host_down_until[host] = time.monotonic() + HOST_RETRY_AFTER_SECONDS
+            last = e
+            print(f"mempool: {host} failed on {path} ({type(e).__name__}) — trying next")
+            continue
+        if host != MEMPOOL_HOSTS[0]:
+            print(f"mempool: served {path} from {host}")
+        return response
+    raise last if last is not None else RuntimeError("no mempool hosts configured")
+
+
 async def get_stats_range(period: str = "1m") -> list[dict]:
     """Rows from mempool's `statistics/{period}`, newest first, `added` as a unix time.
 
@@ -66,17 +118,13 @@ async def get_stats_range(period: str = "1m") -> list[dict]:
     the same backend lottery — see above.
     """
     async with httpx.AsyncClient() as client:
-        response = await client.get(
-            MEMPOOL_BASE_URL + f"lightning/statistics/{period}", timeout=30.0
-        )
-        response.raise_for_status()
+        response = await _get(client, f"v1/lightning/statistics/{period}", timeout=30.0)
         return response.json()
 
 
 async def _draw_latest(client: httpx.AsyncClient, draws: int) -> list[LightningStatsResponse]:
     async def one() -> LightningStatsResponse:
-        response = await client.get(MEMPOOL_BASE_URL + "lightning/statistics/latest")
-        response.raise_for_status()
+        response = await _get(client, "v1/lightning/statistics/latest")
         return LightningStatsResponse(**response.json())
 
     results = await asyncio.gather(*(one() for _ in range(draws)), return_exceptions=True)
@@ -116,8 +164,7 @@ def stats_age_days(stats: LightningStatsResponse) -> int:
 async def get_nodes_per_country() -> list[NodesPerCountry]:
     if "result" not in _country_cache:
         async with httpx.AsyncClient() as client:
-            response = await client.get(MEMPOOL_BASE_URL + "lightning/nodes/countries")
-            response.raise_for_status()
+            response = await _get(client, "v1/lightning/nodes/countries")
             _country_cache["result"] = response.json()
     return _country_cache["result"]
 
@@ -125,8 +172,7 @@ async def get_nodes_per_country() -> list[NodesPerCountry]:
 async def get_largest_nodes() -> list[LargestNode]:
     if "result" not in _nodes_cache:
         async with httpx.AsyncClient() as client:
-            response = await client.get(MEMPOOL_BASE_URL + "lightning/nodes/rankings/liquidity")
-            response.raise_for_status()
+            response = await _get(client, "v1/lightning/nodes/rankings/liquidity")
             _nodes_cache["result"] = response.json()
     return _nodes_cache["result"]
 
@@ -134,8 +180,7 @@ async def get_largest_nodes() -> list[LargestNode]:
 async def get_btc_price() -> BtcPrice:
     if "result" not in _price_cache:
         async with httpx.AsyncClient() as client:
-            response = await client.get(MEMPOOL_BASE_URL + "prices")
-            response.raise_for_status()
+            response = await _get(client, "v1/prices")
             _price_cache["result"] = BtcPrice(**response.json())
     return _price_cache["result"]
 
@@ -144,8 +189,7 @@ async def get_historical_prices() -> list[HistoricalPricePoint]:
     # Hourly BTC prices back to 2010 (~2 MB payload) — used to derive historical velocity
     if "result" not in _history_cache:
         async with httpx.AsyncClient() as client:
-            response = await client.get(MEMPOOL_BASE_URL + "historical-price", timeout=60.0)
-            response.raise_for_status()
+            response = await _get(client, "v1/historical-price", timeout=60.0)
             _history_cache["result"] = HistoricalPriceResponse(**response.json()).prices
     return _history_cache["result"]
 
@@ -153,8 +197,7 @@ async def get_historical_prices() -> list[HistoricalPricePoint]:
 async def get_chain_tip() -> int:
     if "result" not in _tip_cache:
         async with httpx.AsyncClient() as client:
-            response = await client.get(MEMPOOL_API_URL + "blocks/tip/height", timeout=30.0)
-            response.raise_for_status()
+            response = await _get(client, "blocks/tip/height", timeout=30.0)
             _tip_cache["result"] = int(response.text)
     return _tip_cache["result"]
 
@@ -184,10 +227,9 @@ async def get_outspends(points: Iterable[str]) -> dict[str, dict]:
             if not txid or not vout.isdigit():
                 return point, None
             async with semaphore:
-                response = await client.get(
-                    MEMPOOL_API_URL + f"tx/{txid}/outspend/{vout}", timeout=30.0
+                response = await _get(
+                    client, f"tx/{txid}/outspend/{vout}", timeout=30.0
                 )
-                response.raise_for_status()
                 return point, response.json()
 
         for outcome in await asyncio.gather(
@@ -224,10 +266,7 @@ async def get_block_timestamps(heights: Iterable[int]) -> dict[int, int]:
         async with httpx.AsyncClient() as client:
             async def fetch(window: int) -> list[dict]:
                 async with semaphore:
-                    response = await client.get(
-                        MEMPOOL_BASE_URL + f"blocks/{window}", timeout=30.0
-                    )
-                    response.raise_for_status()
+                    response = await _get(client, f"v1/blocks/{window}", timeout=30.0)
                     return response.json()
 
             results = await asyncio.gather(
