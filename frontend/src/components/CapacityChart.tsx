@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { niceTicks } from "../utils";
 
 // The report card's capacity chart: raw daily readings on a true time axis, with both
 // axes labelled and the comparison the analysis text makes drawn on it.
@@ -18,6 +17,19 @@ const DAY_MS = 86_400_000;
 // Readings further apart than this are joined by a dashed line rather than a solid
 // one: the line crosses a stretch we have no readings for, and should not look measured.
 const GAP_DAYS = 3;
+
+// The y axis runs from 0 to the highest reading plus this headroom, rounded up to a
+// multiple of CEILING_ROUND BTC (3,880 → 4,500).
+const CEILING_HEADROOM = 1.15;
+const CEILING_ROUND = 500;
+
+// Gridlines at round numbers, no more than six above zero: the smallest step that fits.
+function axisTicks(vMax: number): number[] {
+  const step = [100, 200, 500, 1000, 2000, 5000, 10000].find((s) => vMax / s <= 6) ?? 20000;
+  const ticks: number[] = [];
+  for (let v = 0; v <= vMax; v += step) ticks.push(v);
+  return ticks;
+}
 
 const MIN_H = 190; // never drawn shorter than this, whatever the column gives it
 const PAD = { left: 58, right: 12, top: 10, bottom: 40 };
@@ -73,13 +85,14 @@ export function CapacityChart({
   const plotH = H - PAD.top - PAD.bottom;
   const baseY = PAD.top + plotH;
 
-  // Fit the y range to the readings, with room so the line never touches the frame.
-  const lo = Math.min(...values);
-  const hi = Math.max(...values);
-  const pad = (hi - lo) * 0.1 || hi * 0.02 || 1;
-  const vMin = lo - pad;
-  const vMax = hi + pad;
-  const yTicks = niceTicks(vMin, vMax);
+  // The axis starts at zero. A range fitted tightly to the readings turns a 10% move
+  // into a cliff; from zero the chart shows how large the move is against the whole,
+  // and the numbers in the analysis carry the detail. The ceiling comes from the data
+  // (highest reading plus headroom, rounded up to a clean number) rather than being a
+  // fixed figure, so it cannot clip the line if capacity climbs back above today's range.
+  const vMin = 0;
+  const vMax = Math.ceil((Math.max(...values) * CEILING_HEADROOM) / CEILING_ROUND) * CEILING_ROUND;
+  const yTicks = axisTicks(vMax);
 
   const x = (t: number) => PAD.left + ((t - t0) / Math.max(t1 - t0, 1)) * plotW;
   const y = (v: number) => PAD.top + (1 - (v - vMin) / (vMax - vMin)) * plotH;
