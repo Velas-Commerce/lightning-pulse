@@ -954,16 +954,10 @@
   color: var(--lightning);
 }
 
-/* A hovering preview ignores the pointer so it can never flicker under the mouse; a
-   pinned one is there to be read, so its text can be selected and clicked. */
-.info-tooltip-box--pinned {
-  pointer-events: auto;
-  user-select: text;
-  cursor: text;
-}
-
 .info-tooltip-box {
   width: 280px;
+  display: flex;
+  flex-direction: column;
   background: #080202;
   border: 1px solid rgba(180, 80, 0, 0.6);
   border-radius: 6px;
@@ -985,6 +979,22 @@
   margin: 0;
   padding: 0;
   border: none;
+}
+
+/* The box's own max-height is set inline from the room available; a longer tooltip
+   scrolls here, inside the box, so the arrow (which sits outside it) is never clipped. */
+.info-tooltip-scroll {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* A hovering preview ignores the pointer so it can never flicker under the mouse; a
+   pinned one is there to be read, so its text can be selected and scrolled. Declared
+   after the base rule above, which sets pointer-events: none, so that it wins. */
+.info-tooltip-box--pinned {
+  pointer-events: auto;
+  user-select: text;
+  cursor: text;
 }
 
 /* Arrow pointing up toward icon (tooltip is below the icon) */
