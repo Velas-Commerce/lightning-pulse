@@ -103,21 +103,13 @@ function capacityFigure(c: CapacityTrend) {
   };
 }
 
-/** Capacity against its trend: a subheading in the summary, the analysis in words, and
- *  the chart that backs it. */
-function CapacityBlock({ c }: { c: CapacityTrend }) {
+/** Capacity against its trend, in words: a subheading in the summary and the analysis.
+ *  The chart that backs it has its own column beside the summary (see VerdictStep). */
+function CapacityText({ c }: { c: CapacityTrend }) {
   return (
     <section className="rc-capacity">
       <h3 className="rc-subheading">Network capacity</h3>
-      <div className="rc-capacity-body">
-        <p className="rc-subline">{c.analysis}</p>
-        <CapacityChart
-          dates={c.dates}
-          values={c.series}
-          recentDays={c.change_days}
-          longDays={c.long_days}
-        />
-      </div>
+      <p className="rc-subline">{c.analysis}</p>
     </section>
   );
 }
@@ -225,14 +217,20 @@ function VerdictStep({ report }: { report: DailyReport }) {
       : []),
   ];
 
+  // Two columns: the summary on the left (date stamp, headline, capacity analysis, the
+  // day's figures), the capacity chart on the right for the full height of the slide.
+  // The stamp lives here, not above the slide as on the others, so the chart's top lines
+  // up with it. On narrow screens the chart drops between the analysis and the figures.
   return (
-    <>
-      <Headline text={verdict.headline} highlight={verdict.highlight} />
-      <p className="rc-subline">{verdict.subline}</p>
+    <div className={`rc-verdict${report.capacity ? "" : " rc-verdict--solo"}`}>
+      <div className="rc-verdict-head">
+        <p className="rc-stamp">{stampFor(report)}</p>
+        <Headline text={verdict.headline} highlight={verdict.highlight} />
+        <p className="rc-subline">{verdict.subline}</p>
+      </div>
 
-      {report.capacity && <CapacityBlock c={report.capacity} />}
+      {report.capacity && <CapacityText c={report.capacity} />}
 
-      {/* The day's figures close the summary, under the capacity trend. */}
       <div className="rc-figures">
         {figures.map((f) => (
           <div className="rc-figure" key={f.key}>
@@ -244,7 +242,18 @@ function VerdictStep({ report }: { report: DailyReport }) {
           </div>
         ))}
       </div>
-    </>
+
+      {report.capacity && (
+        <div className="rc-verdict-chart">
+          <CapacityChart
+            dates={report.capacity.dates}
+            values={report.capacity.series}
+            recentDays={report.capacity.change_days}
+            longDays={report.capacity.long_days}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -359,7 +368,8 @@ function ReportCard() {
         )}
       </h2>
 
-      {report && <p className="rc-stamp">{stampFor(report)}</p>}
+      {/* The Verdict slide carries its own stamp inside its left column */}
+      {report && steps[step].key !== "verdict" && <p className="rc-stamp">{stampFor(report)}</p>}
 
       {report ? steps[step].node : <ReportCardSkeleton />}
 

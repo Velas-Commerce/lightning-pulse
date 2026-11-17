@@ -1239,20 +1239,70 @@
   max-width: 78ch;
 }
 
-/* Hairline separators come from the gap showing the container colour through */
+/* Dividers are borders on the tiles, not the container's colour showing through a gap:
+   with five or seven tiles the last row is short, and the empty cells would otherwise
+   show that colour as a solid block. */
 .rc-figures {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
-  gap: 1px;
-  background: var(--separator);
-  border: 1px solid var(--separator);
-  border-radius: 4px;
-  overflow: hidden;
+  border-top: 1px solid var(--separator);
+  border-left: 1px solid var(--separator);
   margin: 1.5rem 0 0;
 }
 
-/* Capacity against its trend, a section of the summary: a subheading, the analysis in
-   words, and the chart that backs it. */
+/* Beside the chart the column is narrow: three across, two rows */
+@media (min-width: 861px) {
+  .rc-verdict:not(.rc-verdict--solo) > .rc-figures {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* The Verdict slide: the summary on the left (stamp and headline, the capacity analysis,
+   the day's figures), the capacity chart in its own column on the right for the slide's
+   full height. A grid with named areas so the chart can span the three left-hand rows,
+   and so narrow screens can reorder (the chart drops between the analysis and the
+   figures) without the markup changing. */
+.rc-verdict {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 460px);
+  grid-template-rows: auto auto 1fr;
+  grid-template-areas:
+    "head  chart"
+    "cap   chart"
+    "tiles chart";
+  column-gap: 2rem;
+  margin-top: -0.5rem; /* the stamp used to tuck itself under the heading this way */
+}
+
+/* Without capacity there is nothing for a second column to hold. */
+.rc-verdict--solo {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto;
+  grid-template-areas:
+    "head"
+    "tiles";
+}
+
+.rc-verdict-head { grid-area: head; }
+.rc-verdict > .rc-capacity { grid-area: cap; }
+.rc-verdict > .rc-figures { grid-area: tiles; align-self: start; }
+.rc-verdict-chart { grid-area: chart; display: flex; flex-direction: column; min-width: 0; }
+.rc-verdict .rc-stamp { margin: 0 0 1rem; }
+
+@media (max-width: 860px) {
+  .rc-verdict {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      "head"
+      "cap"
+      "chart"
+      "tiles";
+  }
+  .rc-verdict-chart { margin-top: 1.25rem; }
+}
+
+/* Capacity against its trend, in words: a subheading and the analysis. */
 .rc-capacity {
   margin: 1.5rem 0 0;
 }
@@ -1268,26 +1318,26 @@
   border-bottom: 1px solid var(--separator);
 }
 
-.rc-capacity-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 500px);
-  gap: 1rem 2rem;
-  align-items: start;
-}
-
-@media (max-width: 760px) {
-  .rc-capacity-body {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/* The chart panel: bordered, with its legend and readout above the plot. */
+/* The chart panel: bordered, with its legend and readout above the plot. It fills its
+   column's height; the plot takes whatever the legend leaves, and never less than a
+   readable minimum. */
 .rc-chart {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   border: 1px solid var(--separator);
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.015);
   padding: 0.55rem 0.7rem 0.4rem;
+}
+
+/* The svg is positioned inside this box rather than sizing it, so the box's height comes
+   from the column and the chart cannot feed its own size back into the layout. */
+.rc-chart-plot {
+  position: relative;
+  flex: 1;
+  min-height: 210px;
 }
 
 .rc-chart-head {
@@ -1331,6 +1381,8 @@
 
 .rc-figure {
   background: var(--bg-card);
+  border-right: 1px solid var(--separator);
+  border-bottom: 1px solid var(--separator);
   padding: 0.6rem 0.75rem;
 }
 

@@ -19,7 +19,7 @@ const DAY_MS = 86_400_000;
 // one: the line crosses a stretch we have no readings for, and should not look measured.
 const GAP_DAYS = 3;
 
-const H = 190;
+const MIN_H = 190; // never drawn shorter than this, whatever the column gives it
 const PAD = { left: 58, right: 12, top: 10, bottom: 40 };
 
 // UTC midnight of an ISO date, from its parts.
@@ -47,17 +47,21 @@ export function CapacityChart({
   longDays: number; // the span of the long-run pace line
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
+  const [size, setSize] = useState({ width: 0, height: 0 });
   const [hover, setHover] = useState<number | null>(null);
 
+  // The plot is drawn to fill the box its column gives it, width and height.
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    setWidth(Math.floor(el.clientWidth));
-    const observer = new ResizeObserver(([entry]) => setWidth(Math.floor(entry.contentRect.width)));
+    const read = () => setSize({ width: Math.floor(el.clientWidth), height: Math.floor(el.clientHeight) });
+    read();
+    const observer = new ResizeObserver(read);
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+  const { width } = size;
+  const H = Math.max(size.height, MIN_H);
 
   if (values.length < 2 || dates.length !== values.length) return null;
 
@@ -132,7 +136,7 @@ export function CapacityChart({
             height={H}
             role="img"
             aria-label={label}
-            style={{ display: "block", touchAction: "pan-y", cursor: "crosshair" }}
+            style={{ position: "absolute", left: 0, top: 0, touchAction: "pan-y", cursor: "crosshair" }}
             onPointerMove={handleMove}
             onPointerLeave={() => setHover(null)}
           >
