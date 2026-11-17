@@ -7,10 +7,11 @@ The window length is derived from the data actually held, never hardcoded, so
 the generated copy grows with the archive instead of claiming a fixed 90 days.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import db
 from models import (
+    CapacityTrend,
     DailyReport,
     HourlyFlow,
     ReportBaseline,
@@ -21,6 +22,7 @@ from models import (
 from services.velocity import (
     SATS_PER_BTC,
     get_velocity_history,
+    load_capacity_docs,
     load_capacity_series,
 )
 
@@ -343,19 +345,23 @@ _MONTHS = (
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 )
 
-# Where each index comes from. Shown in place of the card-wide coverage note, which
-# describes opens and closes and says nothing true about these four.
+# Where capacity comes from. It credits the imported history by name, so it travels
+# with the capacity figure wherever that is shown (it sits in the verdict's coverage
+# note, since capacity now lives on the front page).
+CAPACITY_SOURCE = (
+    "Network capacity comes from our own LND node's graph, read daily at 00:15 UTC. "
+    "Earlier days come from BitcoinVisuals.com's daily history, which is a different "
+    "method, so expect a small step where the two meet."
+)
+
+# Where each slow index comes from. Shown in place of the card-wide coverage note,
+# which describes opens and closes and says nothing true about these.
 SLOW_SOURCES = {
     "gini": "Channel sizes from our own LND node's graph, snapshotted daily at 00:15 UTC.",
     "top10": "Node capacity from our own LND node's graph, snapshotted daily at 00:15 UTC.",
-    "capacity": (
-        "Network capacity from our own LND node's graph, read daily at 00:15 UTC. "
-        "Earlier days come from BitcoinVisuals.com's daily history, which is a "
-        "different method, so expect a small step where the two meet."
-    ),
     "velocity": (
-        "A hand-curated monthly volume estimate, held constant, over the capacity "
-        "series above at hourly BTC prices from mempool.space."
+        "A hand-curated monthly volume estimate, held constant, over the network "
+        "capacity trend on the first slide at hourly BTC prices from mempool.space."
     ),
 }
 
@@ -401,13 +407,17 @@ def _size_of_move(series: list[float]) -> str:
     )
 
 
-def _staleness(s: SlowIndex) -> str:
-    if s.stale_days <= 2:
+def _stale_note(as_of: str, stale_days: int) -> str:
+    if stale_days <= 2:
         return ""
     return (
-        f"The latest reading is from {_day_label(s.as_of)}, {s.stale_days} days "
+        f"The latest reading is from {_day_label(as_of)}, {stale_days} days "
         f"before this report, so read it as a trend rather than a current figure. "
     )
+
+
+def _staleness(s: SlowIndex) -> str:
+    return _stale_note(s.as_of, s.stale_days)
 
 
 def slow_analysis(indices: list[SlowIndex]) -> dict[str, str]:
@@ -465,10 +475,8 @@ def slow_analysis(indices: list[SlowIndex]) -> dict[str, str]:
             text += " Gini is at the same extreme, so both measures agree."
         out["top10"] = text
 
-    for key, subject in (("capacity", "Network capacity"), ("velocity", "Velocity")):
-        s = by_key.get(key)
-        if not s:
-            continue
+    s = by_key.get("velocity")
+    if s:
         n = len(s.series)
         change = _change_pct(s.series)
         edge = _edge(s.series)
@@ -483,25 +491,157 @@ def slow_analysis(indices: list[SlowIndex]) -> dict[str, str]:
             if change is not None
             else ""
         )
-        text = _staleness(s) + f"{subject} sits {rank}{moved}."
-        if key == "velocity":
-            # The estimate is constant, so this is capacity and price restated.
-            text += (
-                " The volume estimate is held constant, so it moves only with capacity "
-                "and BTC price and says nothing new about payment activity."
-            )
-        out[key] = text
+        # The estimate is constant, so this is capacity and price restated.
+        out["velocity"] = (
+            _staleness(s) + f"Velocity sits {rank}{moved}."
+            " The volume estimate is held constant, so it moves only with capacity "
+            "and BTC price and says nothing new about payment activity."
+        )
 
     return out
+
+
+# The recent leg of the capacity comparison, set against the whole window held.
+CAPACITY_RECENT_DAYS = 30
+# A recent leg shorter than this is too short to call a change.
+CAPACITY_MIN_RECENT_DAYS = 7
+# The recent pace counts as "in line" with the long-run pace inside this band.
+PACE_SLOWER = 0.7
+PACE_FASTER = 1.3
+# A move smaller than this (percent) is called flat rather than a trend.
+FLAT_PCT = 0.5
+
+
+def _signed(value: float, unit: str) -> str:
+    # A true minus sign, matching the frontend, so a figure reads the same in both.
+    return f"{'+' if value >= 0 else '−'}{abs(value):,.1f}{unit}"
+
+
+def day_change(docs: dict[str, dict], report_date: str) -> float | None:
+    """BTC the capacity reading moved across the reported UTC day, or None.
+
+    A reading dated D describes the network at the start of D, so the change over day
+    D is the reading dated D+1 minus the one dated D. It is only reported when both
+    exist, came from the same method, and are plain observations. Across two methods
+    the difference is the method, not the network; and a day the import flagged as
+    carried forward or interpolated moved by construction.
+    """
+    following = (date.fromisoformat(report_date) + timedelta(days=1)).isoformat()
+    start, end = docs.get(report_date), docs.get(following)
+    if not start or not end:
+        return None
+    if start.get("source") != end.get("source"):
+        return None
+    if start.get("quality") or end.get("quality"):
+        return None
+    return (end["total_capacity"] - start["total_capacity"]) / SATS_PER_BTC
+
+
+def capacity_trend(
+    obs: list[tuple[str, int]], today: date, day_change_btc: float | None = None
+) -> CapacityTrend | None:
+    """Network capacity against its own trend. `obs` is ascending (date, sats).
+
+    Two legs are compared: the change over roughly the last CAPACITY_RECENT_DAYS, and
+    the change over everything held. Saying the recent leg is slower or faster than
+    the long-run pace is the point — a level and a percentile alone cannot say whether
+    capacity is still falling as fast as it was. Like the rest of the card it makes
+    claims only about the window actually held, and reports no comparison at all when
+    the series is too short to support one.
+    """
+    if len(obs) < 2:
+        return None
+
+    dates = [d for d, _ in obs]
+    btc = [sats / SATS_PER_BTC for _, sats in obs]
+    latest_iso, latest = dates[-1], btc[-1]
+    latest_day = date.fromisoformat(latest_iso)
+    long_days = max(1, (latest_day - date.fromisoformat(dates[0])).days)
+    long_pct = _change_pct(btc)
+
+    # The reading on or before the anchor date; the earliest one when the series is
+    # shorter than the recent leg, in which case the leg is simply what we have.
+    anchor = (latest_day - timedelta(days=CAPACITY_RECENT_DAYS)).isoformat()
+    past = 0
+    for i, d in enumerate(dates[:-1]):
+        if d <= anchor:
+            past = i
+    change_days = (latest_day - date.fromisoformat(dates[past])).days
+    recent_ok = change_days >= CAPACITY_MIN_RECENT_DAYS and btc[past] != 0
+    recent_pct = (latest - btc[past]) / abs(btc[past]) * 100 if recent_ok else None
+    recent_btc = latest - btc[past] if recent_ok else None
+
+    n = len(btc)
+    percentile = percentile_of(latest, btc)
+    edge = _edge(btc)
+    if edge == "max":
+        rank = f"at its highest of the last {n} readings"
+    elif edge == "min":
+        rank = f"at its lowest of the last {n} readings"
+    else:
+        rank = f"at the {_ordinal(percentile)} percentile of the last {n} readings"
+
+    stale_days = max(0, (today - latest_day).days)
+    head = f"Capacity is {latest:,.0f} BTC"
+    if recent_pct is not None:
+        head += (
+            f", {'down' if recent_pct < 0 else 'up'} {abs(recent_pct):.1f}% "
+            f"on {change_days} days ago"
+        )
+    text = _stale_note(latest_iso, stale_days) + f"{head}, {rank}."
+
+    # Only when the long window is meaningfully longer than the recent one; otherwise
+    # the two legs are the same measurement and comparing them says nothing.
+    if long_pct is not None and recent_pct is not None and long_days >= change_days * 1.5:
+        if abs(long_pct) < FLAT_PCT:
+            text += f" Over the full {long_days} days it has been broadly flat ({_signed(long_pct, '%')})."
+        else:
+            expected = long_pct * change_days / long_days  # the recent leg at the long pace
+            trend = "decline" if long_pct < 0 else "rise"
+            if recent_pct * expected < 0 and abs(recent_pct) >= FLAT_PCT:
+                text += f" That runs against the {long_days}-day {trend} of {abs(long_pct):.1f}%."
+            else:
+                ratio = recent_pct / expected
+                pace = (
+                    "slower than" if ratio < PACE_SLOWER
+                    else "faster than" if ratio > PACE_FASTER
+                    else "in line with"
+                )
+                text += (
+                    f" That is {pace} the {long_days}-day pace "
+                    f"({_signed(long_pct, '%')} over {long_days} days)."
+                )
+    elif long_pct is not None and recent_pct is None:
+        text += f" Across the {long_days} days held it is {_signed(long_pct, '%')}."
+
+    if day_change_btc is not None:
+        text += f" Over the reported day the reading moved {_signed(day_change_btc, ' BTC')}."
+
+    return CapacityTrend(
+        value=round(latest, 1),
+        as_of=latest_iso,
+        stale_days=stale_days,
+        change_pct=round(recent_pct, 2) if recent_pct is not None else None,
+        change_btc=round(recent_btc, 1) if recent_btc is not None else None,
+        change_days=change_days if recent_ok else None,
+        long_change_pct=round(long_pct, 2) if long_pct is not None else None,
+        long_days=long_days,
+        percentile=percentile,
+        series=[round(v, 1) for v in btc],
+        day_change_btc=round(day_change_btc, 1) if day_change_btc is not None else None,
+        analysis=_guard(text),
+        source=CAPACITY_SOURCE,
+    )
 
 
 async def _slow_indices(database, window_days: int) -> list[SlowIndex]:
     """Percentile of the latest value within the window, for each slow-moving index.
 
     Gini and top-10 share come from our own node's persisted network_metrics and are
-    current. Capacity and velocity come from mempool.space, which serves stale rows
-    from several cache nodes — both are therefore keyed on the upstream `added` date
-    and carry how far behind they are, rather than posing as today's numbers.
+    current. Velocity is derived from the capacity series and mempool's BTC prices, so
+    it carries how far behind it is rather than posing as today's number. Capacity
+    itself is no longer a slow index: it has its own block on the front page
+    (see capacity_trend).
     """
     since = datetime.now(timezone.utc) - timedelta(days=window_days)
     today = datetime.now(timezone.utc).date()
@@ -515,10 +655,6 @@ async def _slow_indices(database, window_days: int) -> list[SlowIndex]:
     metrics_by_day = {str(d["recorded_at"])[:10]: d for d in metrics}
     metric_days = [metrics_by_day[k] for k in sorted(metrics_by_day)]
     metrics_as_of = max(metrics_by_day, default=today.isoformat())
-
-    cutoff = since.strftime("%Y-%m-%d")
-    capacity_obs = [(a, c) for a, c in await load_capacity_series(database) if a >= cutoff]
-    capacity_as_of = capacity_obs[-1][0] if capacity_obs else today.isoformat()
 
     velocity_entries = await get_velocity_history(window_days) or []
     velocity_as_of = (
@@ -534,8 +670,6 @@ async def _slow_indices(database, window_days: int) -> list[SlowIndex]:
          metrics_as_of),
         ("velocity", "Velocity",
          [e.velocity for e in velocity_entries], velocity_as_of),
-        ("capacity", "Capacity",
-         [float(c) for _, c in capacity_obs], capacity_as_of),
     ]
 
     indices: list[SlowIndex] = []
@@ -557,6 +691,15 @@ async def _slow_indices(database, window_days: int) -> list[SlowIndex]:
     for key, text in slow_analysis(indices).items():
         next(s for s in indices if s.key == key).analysis = _guard(text)
     return indices
+
+
+async def _capacity_trend(database, window_days: int, report_date: str) -> CapacityTrend | None:
+    """Load the capacity series for the window and build its trend block."""
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=window_days)).strftime("%Y-%m-%d")
+    docs = await load_capacity_docs(database)
+    obs = [(a, c) for a, c in await load_capacity_series(database, docs) if a >= cutoff]
+    return capacity_trend(obs, now.date(), day_change(docs, report_date))
 
 
 async def get_daily_report() -> DailyReport | None:
@@ -598,6 +741,7 @@ async def get_daily_report() -> DailyReport | None:
 
     slow = await _slow_indices(database, BASELINE_WINDOW_DAYS)
     gini = next((s for s in slow if s.key == "gini"), None)
+    capacity = await _capacity_trend(database, BASELINE_WINDOW_DAYS, today["date"])
 
     hourly = today.get("hourly")
     opens_median = _median(opens_series)
@@ -674,6 +818,7 @@ async def get_daily_report() -> DailyReport | None:
             "channel ID; closes are confirmed by the funding output being spent "
             "on-chain, so a channel that merely left our view is not counted. "
             "Channels closed before a snapshot are invisible, so older days "
-            "undercount opens."
+            "undercount opens. " + CAPACITY_SOURCE
         ),
+        capacity=capacity,
     )

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { DailyReport, SlowIndex } from "../types";
+import type { CapacityTrend, DailyReport, SlowIndex } from "../types";
 import { fetchDailyReport } from "../api";
 import { Sparkline } from "./Sparkline";
 import { SkeletonBlock, SkeletonLine } from "./Skeleton";
@@ -54,22 +54,25 @@ const fmtDayFull = (iso: string) => {
  * and because only strictly-lower values count, the maximum scores 99 and never
  * 100 — so those are stated in words instead.
  */
-function positionOf(s: SlowIndex): string {
-  const n = s.series.length;
-  const last = s.series[n - 1];
+function positionOf(series: number[], percentile: number): string {
+  const n = series.length;
+  const last = series[n - 1];
   // A percentile and a count are different units; "98th of 91" reads as nonsense.
-  if (last >= Math.max(...s.series)) return `highest of ${n} readings`;
-  if (last <= Math.min(...s.series)) return `lowest of ${n} readings`;
-  return `${ordinal(s.percentile)} percentile · ${n} readings`;
+  if (last >= Math.max(...series)) return `highest of ${n} readings`;
+  if (last <= Math.min(...series)) return `lowest of ${n} readings`;
+  return `${ordinal(percentile)} percentile · ${n} readings`;
 }
 
-function changeOf(s: SlowIndex): string | null {
-  const first = s.series[0];
-  const last = s.series[s.series.length - 1];
+/** A true minus sign, matching the server's copy, so a figure reads the same in both. */
+const signedPct = (pct: number) => `${pct >= 0 ? "+" : "−"}${Math.abs(pct).toFixed(1)}%`;
+
+function changeOf(series: number[]): string | null {
+  const first = series[0];
+  const last = series[series.length - 1];
   if (!first) return null;
   const pct = ((last - first) / Math.abs(first)) * 100;
   if (!isFinite(pct)) return null;
-  return `${pct >= 0 ? "+" : "−"}${Math.abs(pct).toFixed(1)}%`;
+  return signedPct(pct);
 }
 
 /** Each slow index carries its own units; there is no sensible shared format. */
@@ -81,11 +84,43 @@ function formatIndex(s: SlowIndex): string {
       return `${(s.value * 100).toFixed(1)}%`;
     case "velocity":
       return `${s.value.toFixed(2)}×`;
-    case "capacity":
-      return `${Math.round(s.value / SATS_PER_BTC).toLocaleString()} BTC`;
     default:
       return s.value.toLocaleString();
   }
+}
+
+/** The capacity tile: the level, and how far it moved over the recent leg. */
+function capacityFigure(c: CapacityTrend) {
+  const moved = c.change_pct !== null && c.change_days !== null;
+  return {
+    key: "Network capacity",
+    value: `${Math.round(c.value).toLocaleString()} BTC`,
+    sub: moved
+      ? `${signedPct(c.change_pct as number)} over ${c.change_days} days`
+      : `as of ${fmtDay(c.as_of)}`,
+    tone: moved ? ((c.change_pct as number) < 0 ? "dn" : "up") : undefined,
+  };
+}
+
+/** Capacity against its trend: the analysis in words beside the line that backs it. */
+function CapacityBlock({ c }: { c: CapacityTrend }) {
+  const long = c.long_change_pct !== null ? ` · ${signedPct(c.long_change_pct)} over ${c.long_days} days` : "";
+  return (
+    <div className="rc-capacity">
+      <div className="rc-capacity-text">
+        <span className="rc-slow-label">Network capacity</span>
+        <p className="rc-subline">{c.analysis}</p>
+      </div>
+      <div className="rc-capacity-chart">
+        <Sparkline values={c.series} />
+        <span className="rc-slow-caption">
+          <b>{positionOf(c.series, c.percentile)}</b>
+          {long}
+          {c.stale_days > 2 && ` · as of ${fmtDay(c.as_of)}`}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 function Headline({ text, highlight }: { text: string; highlight: string | null }) {
@@ -168,6 +203,9 @@ function VerdictStep({ report }: { report: DailyReport }) {
         : `vs ${baseline.btc_in_median.toFixed(1)} typical`,
       tone: "up",
     },
+    // Beside "New capacity" on purpose: one is the day's inflow, the other the network
+    // total and where it has been heading.
+    ...(report.capacity ? [capacityFigure(report.capacity)] : []),
     ...(medianOpen > 0
       ? [
           {
@@ -204,6 +242,8 @@ function VerdictStep({ report }: { report: DailyReport }) {
           </div>
         ))}
       </div>
+
+      {report.capacity && <CapacityBlock c={report.capacity} />}
     </>
   );
 }
@@ -216,8 +256,8 @@ function SlowStep({ index: s }: { index: SlowIndex }) {
       <div className="rc-panel-value">{formatIndex(s)}</div>
       <Sparkline values={s.series} />
       <span className="rc-slow-caption">
-        <b>{positionOf(s)}</b>
-        {changeOf(s) && ` · ${changeOf(s)}`}
+        <b>{positionOf(s.series, s.percentile)}</b>
+        {changeOf(s.series) && ` · ${changeOf(s.series)}`}
         {/* Mempool-derived indices run weeks behind the day being reported;
             say so rather than letting them pass as current. */}
         {s.stale_days > 2 && ` · as of ${fmtDay(s.as_of)}`}

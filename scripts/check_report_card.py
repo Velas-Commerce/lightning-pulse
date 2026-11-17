@@ -296,19 +296,107 @@ check("gini edge without top-10 edge is called out", "not at the top of the node
 check("top10 mid-range keeps the percentile", "55th percentile" in a["top10"], True)
 check("disagreement is not called agreement", "agree" in a["top10"], False)
 
-stale = [slow("capacity", [450e9, 440e9, 375e9], 0, stale=37, as_of="2026-08-30"),
-         slow("velocity", [3.8, 3.9, 3.98], 50, stale=37, as_of="2026-08-30")]
+stale = [slow("velocity", [3.8, 3.9, 3.98], 50, stale=37, as_of="2026-08-30")]
 a = rc.slow_analysis(stale)
-check("stale reading says so up front", a["capacity"].startswith("The latest reading is from 30 Aug, 37 days"), True)
-check("capacity at its low is stated in words", "lowest of the last 3 readings" in a["capacity"], True)
+check("stale reading says so up front", a["velocity"].startswith("The latest reading is from 30 Aug, 37 days"), True)
 check("velocity admits it restates capacity", "held constant" in a["velocity"], True)
 check("fresh reading carries no staleness note",
-      "days before" in rc.slow_analysis([slow("capacity", [1.0, 2.0, 1.5], 50)])["capacity"], False)
+      "days before" in rc.slow_analysis([slow("velocity", [1.0, 2.0, 1.5], 50)])["velocity"], False)
+check("capacity is no longer a slow index",
+      "capacity" in rc.slow_analysis([slow("capacity", [1.0, 2.0], 50)]), False)
+
+print("\n== capacity on the front page ==")
+from datetime import date as _date, timedelta  # noqa: E402
+
+TODAY = _date(2026, 11, 17)
+
+
+def daily(values, end="2026-11-17"):
+    """Ascending (date, sats), one reading a day ending on `end`."""
+    end_day = _date.fromisoformat(end)
+    n = len(values)
+    return [((end_day - timedelta(days=n - 1 - i)).isoformat(), round(v * 100_000_000))
+            for i, v in enumerate(values)]
+
+
+steady = [4000 - i * (1000 / 89) for i in range(90)]
+slowing = [4000 - i * 15 for i in range(60)] + [3115 - (i - 59) for i in range(60, 90)]
+reversal = [4000 - i * 15 for i in range(60)] + [3115 + (i - 59) * 10 for i in range(60, 90)]
+speeding = [4000.0] * 60 + [4000 - (i - 59) * (400 / 30) for i in range(60, 90)]
+flat = [3500.0] * 90
+
+t = rc.capacity_trend(daily(steady), TODAY)
+check("a steady decline is called in line with its own pace", "in line with the 89-day pace" in t.analysis, True)
+check("the recent change is stated against 30 days ago", "down 10.1% on 30 days ago" in t.analysis, True)
+check("the level is stated in whole BTC", t.analysis.startswith("Capacity is 3,000 BTC"), True)
+check("the low is stated in words, not as a percentile", "at its lowest of the last 90 readings" in t.analysis, True)
+check("the long change is reported", t.long_change_pct, -25.0)
+check("the block carries one point per reading", len(t.series), 90)
+
+t = rc.capacity_trend(daily(slowing), TODAY)
+check("a decline that has eased is called slower", "slower than the 89-day pace" in t.analysis, True)
+
+t = rc.capacity_trend(daily(speeding), TODAY)
+check("a decline that has quickened is called faster", "faster than the 89-day pace" in t.analysis, True)
+
+t = rc.capacity_trend(daily(reversal), TODAY)
+check("a recent rise against a long decline is called against it",
+      "runs against the 89-day decline" in t.analysis, True)
+check("a rise reads as up", " up " in t.analysis, True)
+
+t = rc.capacity_trend(daily(flat), TODAY)
+check("an unmoving window is called flat, with no pace claim",
+      ("broadly flat" in t.analysis, "pace" in t.analysis), (True, False))
+
+t = rc.capacity_trend(daily([3000 + i for i in range(90)]), TODAY)
+check("the high is stated in words", "at its highest of the last 90 readings" in t.analysis, True)
+
+check("one reading is not a trend", rc.capacity_trend(daily([3000.0]), TODAY), None)
+check("no readings is not a trend", rc.capacity_trend([], TODAY), None)
+
+t = rc.capacity_trend(daily([3000.0, 3010.0, 3020.0], end="2026-11-17"), TODAY)
+check("a window too short for a recent change says so and makes no comparison",
+      (t.change_pct, t.change_days, "Across the 2 days held" in t.analysis, "pace" in t.analysis),
+      (None, None, True, False))
+
+t = rc.capacity_trend(daily(steady), _date(2026, 11, 25))
+check("a stale reading says so up front",
+      t.analysis.startswith("The latest reading is from 17 Nov, 8 days before this report"), True)
+check("a fresh reading carries no staleness note",
+      "days before" in rc.capacity_trend(daily(steady), TODAY).analysis, False)
+
+check("a day change is stated when known",
+      "moved +12.3 BTC" in rc.capacity_trend(daily(steady), TODAY, 12.3).analysis, True)
+check("a negative day change uses a true minus",
+      "moved −4.0 BTC" in rc.capacity_trend(daily(steady), TODAY, -4.0).analysis, True)
+check("no day change, no claim about the day",
+      "reported day" in rc.capacity_trend(daily(steady), TODAY).analysis, False)
+check("the source credits the imported history by name",
+      "BitcoinVisuals.com" in rc.capacity_trend(daily(steady), TODAY).source, True)
+
+docs = {
+    "2026-11-16": {"date": "2026-11-16", "total_capacity": 3_000 * 10**8, "source": "lnd"},
+    "2026-11-17": {"date": "2026-11-17", "total_capacity": 2_990 * 10**8, "source": "lnd"},
+    "2026-11-10": {"date": "2026-11-10", "total_capacity": 3_000 * 10**8, "source": "bitcoinvisuals"},
+    "2026-11-11": {"date": "2026-11-11", "total_capacity": 3_050 * 10**8, "source": "lnd"},
+    "2026-11-12": {"date": "2026-11-12", "total_capacity": 3_000 * 10**8, "source": "bitcoinvisuals",
+                   "quality": "interpolated"},
+    "2026-11-13": {"date": "2026-11-13", "total_capacity": 3_000 * 10**8, "source": "bitcoinvisuals"},
+}
+check("a day change needs a reading at each end of the day, from the same method",
+      rc.day_change(docs, "2026-11-16"), -10.0)
+check("a day with no reading after it has no change", rc.day_change(docs, "2026-11-17"), None)
+check("a change across two methods is not reported", rc.day_change(docs, "2026-11-10"), None)
+check("a day the import flagged is not reported", rc.day_change(docs, "2026-11-12"), None)
+check("a day with no reading at its start has no change", rc.day_change(docs, "2026-11-14"), None)
 
 check("ordinals: 11th 12th 13th 21st 102nd", [rc._ordinal(n) for n in (11, 12, 13, 21, 102)],
       ["11th", "12th", "13th", "21st", "102nd"])
+trend_copy = [rc.capacity_trend(daily(v), TODAY, 5.0).analysis
+              for v in (steady, slowing, reversal, speeding, flat)]
 every = " ".join(list(rc.slow_analysis([slow("gini", rising, 99), slow("top10", rising, 99)]).values())
-                 + list(a.values()) + list(rc.SLOW_SOURCES.values())).lower()
+                 + list(a.values()) + list(rc.SLOW_SOURCES.values())
+                 + trend_copy + [rc.CAPACITY_SOURCE]).lower()
 check("copy passes the language guard", [p for p in rc.BANNED_PHRASES if p in every], [])
 
 print("\n== mempool stats freshness ==")

@@ -197,6 +197,31 @@ class SlowIndex(BaseModel):
     source: str = ""
 
 
+class CapacityTrend(BaseModel):
+    """Network capacity against its own trend, for the front page of the report card.
+
+    This is what the separate Capacity slide used to show — the level, where it sits
+    in the window, the line to draw — plus how far it moved recently and how that
+    compares with the longer run, which is the part that was buried.
+    """
+    value: float                    # BTC, the latest reading
+    as_of: str                      # date of that reading
+    stale_days: int                 # days between that reading and today
+    change_pct: float | None        # over `change_days`; None when the series is too short
+    change_btc: float | None
+    change_days: int | None
+    long_change_pct: float | None   # first to last reading held
+    long_days: int
+    percentile: int                 # position of the latest reading within the window
+    series: list[float]             # BTC, one per reading, oldest first
+    # BTC the reading moved across the reported UTC day. None unless two consecutive
+    # daily readings exist and came from the same method, since a change measured
+    # across two methods is the method, not the network.
+    day_change_btc: float | None
+    analysis: str = ""
+    source: str = ""
+
+
 class ReportVerdict(BaseModel):
     headline: str
     subline: str
@@ -218,3 +243,4 @@ class DailyReport(BaseModel):
     verdict: ReportVerdict
     closes_available: bool  # False until on-chain close detection lands
     coverage_note: str
+    capacity: CapacityTrend | None = None

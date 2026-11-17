@@ -172,6 +172,25 @@ export type SlowIndex = {
   source: string; // where the figure comes from and how fresh it can be
 };
 
+// Network capacity against its own trend, shown on the report card's first slide.
+export type CapacityTrend = {
+  value: number; // BTC, the latest reading
+  as_of: string; // date of that reading
+  stale_days: number;
+  change_pct: number | null; // over change_days; null when the series is too short
+  change_btc: number | null;
+  change_days: number | null;
+  long_change_pct: number | null; // first to last reading held
+  long_days: number;
+  percentile: number; // position of the latest reading within the window
+  series: number[]; // BTC, one per reading, oldest first
+  // BTC moved across the reported UTC day; null unless two consecutive readings from
+  // the same method exist
+  day_change_btc: number | null;
+  analysis: string;
+  source: string;
+};
+
 export type ReportVerdict = {
   headline: string;
   subline: string;
@@ -192,4 +211,5 @@ export type DailyReport = {
   verdict: ReportVerdict;
   closes_available: boolean; // false until on-chain close detection lands
   coverage_note: string;
+  capacity: CapacityTrend | null; // null when fewer than two readings are held
 };

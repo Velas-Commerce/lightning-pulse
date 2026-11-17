@@ -1251,6 +1251,25 @@
   margin: 1.25rem 0 1rem;
 }
 
+/* Capacity against its trend, under the tiles: analysis in words, the line beside it. */
+.rc-capacity {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 420px);
+  gap: 1rem 2rem;
+  align-items: center;
+  margin: 0 0 1rem;
+}
+
+.rc-capacity-chart {
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .rc-capacity {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .rc-figure {
   background: var(--bg-card);
   padding: 0.6rem 0.75rem;

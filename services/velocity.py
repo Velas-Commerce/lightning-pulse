@@ -77,16 +77,30 @@ def merge_capacity(
     return [p for p in mempool if p[0] < switchover] + snapshots
 
 
-async def load_capacity_series(database) -> list[tuple[str, int]]:
+async def load_capacity_docs(database) -> dict[str, dict]:
+    """capacity_snapshots keyed by date, ascending, with the source and quality of each.
+
+    Source and quality are what let a caller refuse to compare two readings taken by
+    different methods, or to trust a day the import flagged as carried or interpolated.
+    """
+    readings = await database["capacity_snapshots"].find(
+        {}, {"_id": 0, "date": 1, "total_capacity": 1, "source": 1, "quality": 1},
+    ).sort("date", 1).to_list(length=None)
+    return {r["date"]: r for r in readings if r.get("total_capacity")}
+
+
+async def load_capacity_series(
+    database, docs: dict[str, dict] | None = None
+) -> list[tuple[str, int]]:
     """Ascending (YYYY-MM-DD, sats): mempool only before the first snapshot, then the
-    snapshots (imported history, then our own node's readings)."""
+    snapshots (imported history, then our own node's readings). Pass `docs` from
+    load_capacity_docs to avoid reading the collection twice."""
     stats = await database["lightning_stats"].find(
         {}, {"_id": 0, "added": 1, "total_capacity": 1},
     ).to_list(length=None)
-    readings = await database["capacity_snapshots"].find(
-        {}, {"_id": 0, "date": 1, "total_capacity": 1},
-    ).sort("date", 1).to_list(length=None)
-    snapshots = [(r["date"], r["total_capacity"]) for r in readings if r.get("total_capacity")]
+    if docs is None:
+        docs = await load_capacity_docs(database)
+    snapshots = [(d, r["total_capacity"]) for d, r in docs.items()]
     return merge_capacity(capacity_by_observed_day(stats), snapshots)
 
 
