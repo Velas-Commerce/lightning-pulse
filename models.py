@@ -214,6 +214,7 @@ class CapacityTrend(BaseModel):
     long_days: int
     percentile: int                 # position of the latest reading within the window
     series: list[float]             # BTC, one per reading, oldest first
+    dates: list[str]                # YYYY-MM-DD of each reading, parallel to `series`
     # BTC the reading moved across the reported UTC day. None unless two consecutive
     # daily readings exist and came from the same method, since a change measured
     # across two methods is the method, not the network.

@@ -184,6 +184,7 @@ export type CapacityTrend = {
   long_days: number;
   percentile: number; // position of the latest reading within the window
   series: number[]; // BTC, one per reading, oldest first
+  dates: string[]; // YYYY-MM-DD of each reading, parallel to `series`
   // BTC moved across the reported UTC day; null unless two consecutive readings from
   // the same method exist
   day_change_btc: number | null;

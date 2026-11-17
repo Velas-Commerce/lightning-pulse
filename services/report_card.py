@@ -345,9 +345,14 @@ _MONTHS = (
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 )
 
-# Where capacity comes from. It credits the imported history by name, so it travels
-# with the capacity figure wherever that is shown (it sits in the verdict's coverage
-# note, since capacity now lives on the front page).
+# The card's one-line provenance, shown in its info tooltip. Deliberately short, but it
+# must keep both halves: whose view the counts are, and the credit for the imported
+# capacity history. Cut from a paragraph that also covered how opens and closes are
+# derived and the step between data sources.
+COVERAGE_NOTE = "Our LND node's view. Earlier capacity: BitcoinVisuals.com."
+
+# Where capacity comes from, in full. Carried on CapacityTrend.source for API readers;
+# the card itself shows COVERAGE_NOTE.
 CAPACITY_SOURCE = (
     "Network capacity comes from our own LND node's graph, read daily at 00:15 UTC. "
     "Earlier days come from BitcoinVisuals.com's daily history, which is a different "
@@ -628,6 +633,7 @@ def capacity_trend(
         long_days=long_days,
         percentile=percentile,
         series=[round(v, 1) for v in btc],
+        dates=dates,
         day_change_btc=round(day_change_btc, 1) if day_change_btc is not None else None,
         analysis=_guard(text),
         source=CAPACITY_SOURCE,
@@ -812,13 +818,6 @@ async def get_daily_report() -> DailyReport | None:
             gini_series=gini.series if gini else None,
         ),
         closes_available=closes_known,
-        coverage_note=(
-            "Opens and closes seen by our own LND node, which gossips a narrower view "
-            "than the whole network. Opens are decoded from each channel's short "
-            "channel ID; closes are confirmed by the funding output being spent "
-            "on-chain, so a channel that merely left our view is not counted. "
-            "Channels closed before a snapshot are invisible, so older days "
-            "undercount opens. " + CAPACITY_SOURCE
-        ),
+        coverage_note=COVERAGE_NOTE,
         capacity=capacity,
     )

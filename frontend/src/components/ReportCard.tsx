@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { CapacityTrend, DailyReport, SlowIndex } from "../types";
 import { fetchDailyReport } from "../api";
+import { CapacityChart } from "./CapacityChart";
 import { Sparkline } from "./Sparkline";
 import { SkeletonBlock, SkeletonLine } from "./Skeleton";
 import InfoTooltip from "./InfoTooltip";
@@ -102,24 +103,22 @@ function capacityFigure(c: CapacityTrend) {
   };
 }
 
-/** Capacity against its trend: the analysis in words beside the line that backs it. */
+/** Capacity against its trend: a subheading in the summary, the analysis in words, and
+ *  the chart that backs it. */
 function CapacityBlock({ c }: { c: CapacityTrend }) {
-  const long = c.long_change_pct !== null ? ` · ${signedPct(c.long_change_pct)} over ${c.long_days} days` : "";
   return (
-    <div className="rc-capacity">
-      <div className="rc-capacity-text">
-        <span className="rc-slow-label">Network capacity</span>
+    <section className="rc-capacity">
+      <h3 className="rc-subheading">Network capacity</h3>
+      <div className="rc-capacity-body">
         <p className="rc-subline">{c.analysis}</p>
+        <CapacityChart
+          dates={c.dates}
+          values={c.series}
+          recentDays={c.change_days}
+          longDays={c.long_days}
+        />
       </div>
-      <div className="rc-capacity-chart">
-        <Sparkline values={c.series} />
-        <span className="rc-slow-caption">
-          <b>{positionOf(c.series, c.percentile)}</b>
-          {long}
-          {c.stale_days > 2 && ` · as of ${fmtDay(c.as_of)}`}
-        </span>
-      </div>
-    </div>
+    </section>
   );
 }
 
@@ -231,6 +230,9 @@ function VerdictStep({ report }: { report: DailyReport }) {
       <Headline text={verdict.headline} highlight={verdict.highlight} />
       <p className="rc-subline">{verdict.subline}</p>
 
+      {report.capacity && <CapacityBlock c={report.capacity} />}
+
+      {/* The day's figures close the summary, under the capacity trend. */}
       <div className="rc-figures">
         {figures.map((f) => (
           <div className="rc-figure" key={f.key}>
@@ -242,8 +244,6 @@ function VerdictStep({ report }: { report: DailyReport }) {
           </div>
         ))}
       </div>
-
-      {report.capacity && <CapacityBlock c={report.capacity} />}
     </>
   );
 }
@@ -286,8 +286,8 @@ function ReportCard() {
           key: "verdict",
           label: "Verdict",
           node: <VerdictStep report={report} />,
-          // About opens and closes, so it belongs to this panel alone.
-          coverage: report.coverage_note,
+          // No coverage line under this slide: its provenance is in the info tooltip.
+          coverage: "",
         },
         ...report.slow.map((s) => ({
           key: s.key,
@@ -319,8 +319,9 @@ function ReportCard() {
             </div>
             <div className="info-tooltip-note">
               ⚡ Median and MAD rather than mean and standard deviation, because channel
-              flow is spiky. Counts are what our own node gossiped, not the whole network.
+              flow is spiky.
             </div>
+            {report && <div className="info-tooltip-note">{report.coverage_note}</div>}
           </InfoTooltip>
         </span>
         {steps.length > 1 && (

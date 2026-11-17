@@ -1,17 +1,7 @@
 import { useState, useEffect } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { fmtDate } from "../utils";
+import { fmtDate, niceTicks } from "../utils";
 import type { TrendPoint } from "../utils";
-
-// Round-number y-axis ticks within [vMin, vMax], aiming for ~4 intervals
-function niceTicks(vMin: number, vMax: number): number[] {
-  const span = vMax - vMin;
-  const mag = Math.pow(10, Math.floor(Math.log10(span / 4)));
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => span / s <= 4) ?? 10 * mag;
-  const ticks: number[] = [];
-  for (let v = Math.ceil(vMin / step) * step; v <= vMax && ticks.length < 10; v += step) ticks.push(v);
-  return ticks;
-}
 
 // Hand-rolled SVG trend chart, shared by all history series (capacity, velocity,
 // network metrics). The source data jumps around day-to-day (stale/cached upstream

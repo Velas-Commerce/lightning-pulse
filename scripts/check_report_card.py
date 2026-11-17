@@ -373,6 +373,13 @@ check("no day change, no claim about the day",
       "reported day" in rc.capacity_trend(daily(steady), TODAY).analysis, False)
 check("the source credits the imported history by name",
       "BitcoinVisuals.com" in rc.capacity_trend(daily(steady), TODAY).source, True)
+t = rc.capacity_trend(daily(steady), TODAY)
+check("the chart gets a date for every reading, oldest first",
+      (len(t.dates), t.dates[0], t.dates[-1], t.dates == sorted(t.dates)),
+      (90, "2026-08-20", "2026-11-17", True))
+check("the card's one-line note keeps both halves: whose view, and the credit",
+      ("LND node" in rc.COVERAGE_NOTE, "BitcoinVisuals.com" in rc.COVERAGE_NOTE), (True, True))
+check("the card's note is a tenth of the paragraph it replaced", len(rc.COVERAGE_NOTE) <= 60, True)
 
 docs = {
     "2026-11-16": {"date": "2026-11-16", "total_capacity": 3_000 * 10**8, "source": "lnd"},
@@ -396,7 +403,7 @@ trend_copy = [rc.capacity_trend(daily(v), TODAY, 5.0).analysis
               for v in (steady, slowing, reversal, speeding, flat)]
 every = " ".join(list(rc.slow_analysis([slow("gini", rising, 99), slow("top10", rising, 99)]).values())
                  + list(a.values()) + list(rc.SLOW_SOURCES.values())
-                 + trend_copy + [rc.CAPACITY_SOURCE]).lower()
+                 + trend_copy + [rc.CAPACITY_SOURCE, rc.COVERAGE_NOTE]).lower()
 check("copy passes the language guard", [p for p in rc.BANNED_PHRASES if p in every], [])
 
 print("\n== mempool stats freshness ==")
