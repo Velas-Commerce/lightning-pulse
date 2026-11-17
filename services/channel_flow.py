@@ -134,6 +134,38 @@ async def build_clock(min_height: int, tip_height: int) -> BlockClock:
     return BlockClock(anchors, exact_from=resolved_exact)
 
 
+# Fields a day can be missing if it was recorded by a backend older than the one that
+# started storing them. `block_height` is included so a day lacking both ends of its
+# range is filled consistently, but it is only ever filled in, never replaced.
+SIZE_FIELDS = ("median_sats", "largest_sats", "smallest_sats", "block_from", "block_height")
+
+# A rebuilt day this much thinner than what was recorded live has lost too many of its
+# channels to closes for its sizes to stand in for the live figures. The rebuild only
+# sees channels still open today, which is why it can only ever undercount.
+MIN_REBUILT_SHARE = 0.8
+
+
+def size_repairs(existing: list[dict], rebuilt: dict[str, dict]) -> dict[str, dict]:
+    """Per date, the size fields a stored day lacks and `rebuilt` can supply.
+
+    Only gaps are filled. A field the stored day already has is never replaced, and
+    nothing else about the day (opens, capacity, hourly detail, closes) is touched,
+    because those were measured at the time and a rebuild could only be worse.
+    Days whose rebuild is too thin against what was recorded are left out entirely.
+    """
+    out: dict[str, dict] = {}
+    for doc in existing:
+        fresh = rebuilt.get(doc.get("date", ""))
+        if not fresh:
+            continue
+        if fresh.get("opens", 0) < MIN_REBUILT_SHARE * (doc.get("opens") or 0):
+            continue
+        patch = {f: fresh[f] for f in SIZE_FIELDS if not doc.get(f) and fresh.get(f)}
+        if patch:
+            out[doc["date"]] = patch
+    return out
+
+
 def bucket_by_day(
     events: list[tuple[int, int]], clock: BlockClock
 ) -> dict[str, dict]:

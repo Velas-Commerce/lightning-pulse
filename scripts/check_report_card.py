@@ -479,6 +479,34 @@ check("a host that just failed is not retried first on the next call",
       asyncio.run(second_call_skips_dead_host()), ["mempool.emzy.de"])
 mempool._host_down_until.clear()
 
+print("\n== repairing missing channel sizes ==")
+from services.channel_flow import SIZE_FIELDS, size_repairs  # noqa: E402
+
+rebuilt_days = {
+    "2026-11-10": {"opens": 98, "median_sats": 5_000_000, "largest_sats": 400_000_000,
+                   "smallest_sats": 20_000, "block_from": 975_000, "block_height": 975_140},
+    "2026-11-11": {"opens": 40, "median_sats": 4_000_000, "largest_sats": 100_000_000,
+                   "smallest_sats": 20_000, "block_from": 975_150, "block_height": 975_290},
+    "2026-11-12": {"opens": 170, "median_sats": 3_000_000, "largest_sats": 50_000_000,
+                   "smallest_sats": 20_000, "block_from": 975_300, "block_height": 975_440},
+}
+stored_days = [
+    {"date": "2026-11-10", "opens": 99, "block_height": 975_140},        # sizes + block_from missing
+    {"date": "2026-11-11", "opens": 99},                                  # rebuild far too thin
+    {"date": "2026-11-12", "opens": 170, "median_sats": 7_777_777,       # already has a median
+     "largest_sats": 1, "smallest_sats": 1, "block_from": 1, "block_height": 1},
+    {"date": "2026-11-13", "opens": 150},                                 # no rebuilt day at all
+]
+fix = size_repairs(stored_days, rebuilt_days)
+check("a day missing sizes is filled from the rebuild",
+      sorted(fix.get("2026-11-10", {})), ["block_from", "largest_sats", "median_sats", "smallest_sats"])
+check("a field the day already has is never replaced",
+      "block_height" in fix.get("2026-11-10", {}), False)
+check("a rebuild much thinner than what was recorded is skipped", "2026-11-11" in fix, False)
+check("a day that already has every field is left alone", "2026-11-12" in fix, False)
+check("a day with no rebuilt counterpart is left alone", "2026-11-13" in fix, False)
+check("only size fields are ever offered", set().union(*fix.values()) <= set(SIZE_FIELDS), True)
+
 print("\n" + ("ALL PASS" if not fails else f"{len(fails)} FAILURE(S):"))
 for f in fails:
     print("  -", f)

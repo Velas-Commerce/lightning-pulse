@@ -948,9 +948,18 @@
   line-height: 1;
 }
 
-.info-tooltip-icon:hover {
+.info-tooltip-icon:hover,
+.info-tooltip-icon[aria-expanded="true"] {
   opacity: 1;
   color: var(--lightning);
+}
+
+/* A hovering preview ignores the pointer so it can never flicker under the mouse; a
+   pinned one is there to be read, so its text can be selected and clicked. */
+.info-tooltip-box--pinned {
+  pointer-events: auto;
+  user-select: text;
+  cursor: text;
 }
 
 .info-tooltip-box {
