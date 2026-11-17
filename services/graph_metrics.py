@@ -2,9 +2,14 @@ import asyncio
 import db
 from datetime import datetime, timedelta, timezone
 from models import NetworkMetrics
-from services import channel_flow
+from services import capacity, channel_closes, channel_flow
 from services.lnd import _client, LND_URL, get_graph_info
-from services.mempool import get_chain_tip, get_lightning_stats
+from services.mempool import (
+    STATS_MAX_AGE_DAYS,
+    get_chain_tip,
+    get_lightning_stats,
+    stats_age_days,
+)
 
 # The snapshot runs at a fixed UTC time rather than every 24 h from process start,
 # so restarts and deploys can't drift the sampling schedule the baselines rest on.
@@ -137,11 +142,38 @@ async def _persist_snapshot() -> None:
     documents = {
         "network_metrics": _cache.model_dump(),
         "graph_info": (await get_graph_info()).model_dump(),
-        "lightning_stats": (await get_lightning_stats()).latest.model_dump(),
     }
+
+    # mempool.space sometimes serves months-old rows even after retries (see
+    # services/mempool.py). A stale row would be stored as if it described today, and
+    # on a restart it would also overwrite the good row the 00:15 run wrote — so a
+    # row that is not recent is skipped rather than persisted.
+    #
+    # The call can also fail outright (mempool.space and its mirror both down). That
+    # must not cost the day's network_metrics and graph_info, which come from our own
+    # node and are already in `documents`; only the mempool row is skipped.
+    try:
+        stats = await get_lightning_stats()
+    except Exception as e:
+        print(f"lightning_stats not persisted: mempool unavailable ({type(e).__name__}: {e})")
+    else:
+        if stats_age_days(stats) <= STATS_MAX_AGE_DAYS:
+            documents["lightning_stats"] = stats.latest.model_dump()
+        else:
+            print(
+                f"lightning_stats not persisted: freshest row is from "
+                f"{stats.latest.added[:10]}, {stats_age_days(stats)} days old"
+            )
+
     for collection, doc in documents.items():
         doc["recorded_at"] = now
         doc["date"] = day
+        if collection == "lightning_stats":
+            doc["source"] = "mempool"
+            # Never replace the day's row with an older observation of the network.
+            existing = await database[collection].find_one({"date": day}, {"added": 1})
+            if existing and str(existing.get("added") or "") > str(doc["added"]):
+                continue
         # Upsert by UTC date: a restart refreshes the day's snapshot instead of
         # appending a second one. Documents written before `date` existed have no
         # date field, so they never match and are left untouched.
@@ -151,19 +183,24 @@ async def _persist_snapshot() -> None:
 
 
 async def _persist_flow(graph: dict) -> None:
-    """Record completed days of channel opens, decoded from short channel IDs.
+    """Record completed days of channel opens and closes.
 
     Today is deliberately skipped — the card reports a finished day, not a partial
     one. Days whose blocks all carry exact timestamps are refreshed on every run;
     older days, whose times are interpolated and so cannot honestly be binned to
     the hour, are only filled in if missing. That makes a missed run self-healing
     without ever overwriting hourly detail with a coarser version of the same day.
+
+    Opens come from the graph itself. Closes need the previous run's channel set to
+    diff against and an on-chain check per candidate, so they only start once a set
+    has been stored — see services/channel_closes.py.
     """
     database = db.get_db()
     if database is None:
         return
 
-    events = channel_flow.open_events(graph.get("edges", []))
+    edges = graph.get("edges", [])
+    events = channel_flow.open_events(edges)
     if not events:
         return
 
@@ -180,11 +217,47 @@ async def _persist_flow(graph: dict) -> None:
     recent = [(h, c) for h, c in events if h >= floor]
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    for date, doc in channel_flow.bucket_by_day(recent, clock).items():
+
+    closed_by_day: dict[str, dict] = {}
+    try:
+        result = await channel_closes.detect_closes(database, edges, today)
+        in_window = [c for c in result["closes"] if c[0] >= floor]
+        dropped = len(result["closes"]) - len(in_window)
+        closed_by_day = channel_closes.bucket_closes(in_window, clock)
+        print(
+            f"closes: {len(in_window)} confirmed, {result['watching']} still watching, "
+            f"{result['expired']} expired unspent, {dropped} outside the window"
+            + (" (first run — set established, nothing to diff yet)"
+               if result["first_run"] else "")
+        )
+    except Exception as e:
+        # Closes are a bonus on top of opens; never let them cost us the opens.
+        print(f"close detection failed: {e}")
+
+    days = channel_flow.bucket_by_day(recent, clock)
+    for date in sorted(set(days) | set(closed_by_day)):
         if date >= today:
             continue
-        exact = doc["hourly"] is not None
+
+        doc = days.get(date)
+        if doc is None:
+            continue  # closes with no opens bucket: nothing to anchor the day to
         doc.pop("date")  # supplied by the filter
+        exact = doc["hourly"] is not None
+
+        closed = closed_by_day.get(date)
+        if closed is not None:
+            doc["closes"] = closed["closes"]
+            doc["btc_out"] = closed["btc_out"]
+            # Merge into the same hourly array the opens use, so one hour is one
+            # object carrying both sides of the flow.
+            if doc["hourly"] is not None and closed["hourly"] is not None:
+                for hour, caps in enumerate(closed["hourly"]):
+                    doc["hourly"][hour]["closes"] = caps
+        if doc["hourly"] is not None:
+            for entry in doc["hourly"]:
+                entry.setdefault("closes", [])
+
         doc["is_backfilled"] = not exact
         doc["recorded_at"] = datetime.now(timezone.utc)
         await database["daily_flow"].update_one(
@@ -201,6 +274,13 @@ async def refresh_metrics() -> None:
         response.raise_for_status()
         graph = response.json()
     _cache = _compute(graph)
+    try:
+        reading = await capacity.take_reading(graph)
+        if reading is not None:
+            await capacity.persist(reading)
+    except Exception as e:
+        # Capacity is its own reading; it must not cost us the metrics snapshot.
+        print(f"capacity reading failed: {e}")
     await _persist_snapshot()
     try:
         await _persist_flow(graph)

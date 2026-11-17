@@ -118,3 +118,99 @@ export type LiquidityVelocity = {
   capacity_usd: number;
   btc_price_usd: number;
 };
+
+// ── Daily report card (GET /report/daily) ─────────────────────────────────────
+
+export type HourlyFlow = {
+  hour: number;
+  opens: number[]; // one entry per channel, capacity in BTC
+  closes: number[];
+};
+
+export type ReportFlow = {
+  opens: number;
+  btc_in: number;
+  closes: number; // 0 until close detection has a set to diff against
+  btc_out: number;
+  net_channels: number;
+  net_btc: number;
+  // Channel sizes in BTC, computed server-side. Median not mean — the distribution
+  // is skewed roughly 4:1 — and present even on days without hourly detail.
+  median_open: number;
+  largest_open: number;
+  hourly: HourlyFlow[] | null; // null when block times were interpolated
+};
+
+export type ReportBaseline = {
+  window_days: number; // days of history held — what a trend would span
+  live_days: number; // of those, how many the baseline is computed from
+  opens_median: number;
+  opens_mad: number;
+  btc_in_median: number;
+  btc_in_mad: number;
+  // Zero until enough days carry close data; closes cannot be backfilled
+  closes_days: number;
+  closes_median: number;
+  closes_mad: number;
+  btc_out_median: number;
+  btc_out_mad: number;
+  // Live days that carry per-day channel sizes; usually fewer than live_days
+  sizes_days: number;
+  median_open_typical: number; // BTC
+  largest_open_typical: number; // BTC
+};
+
+export type SlowIndex = {
+  key: string;
+  label: string;
+  value: number;
+  percentile: number; // position within the window, never a daily delta
+  series: number[];
+  as_of: string; // date the value describes; mempool-derived ones run weeks behind
+  stale_days: number;
+  analysis: string; // what the reading means, generated server-side
+  source: string; // where the figure comes from and how fresh it can be
+};
+
+// Network capacity against its own trend, shown on the report card's first slide.
+export type CapacityTrend = {
+  value: number; // BTC, the latest reading
+  as_of: string; // date of that reading
+  stale_days: number;
+  change_pct: number | null; // over change_days; null when the series is too short
+  change_btc: number | null;
+  change_days: number | null;
+  long_change_pct: number | null; // first to last reading held
+  long_days: number;
+  percentile: number; // position of the latest reading within the window
+  series: number[]; // BTC, one per reading, oldest first
+  dates: string[]; // YYYY-MM-DD of each reading, parallel to `series`
+  // BTC moved across the reported UTC day; null unless two consecutive readings from
+  // the same method exist
+  day_change_btc: number | null;
+  analysis: string;
+  source: string;
+};
+
+export type ReportVerdict = {
+  headline: string;
+  subline: string;
+  lead_metric: string;
+  deviation: number;
+  // Substring of the headline to emphasise; plain text, no markup crosses the API
+  highlight: string | null;
+};
+
+export type DailyReport = {
+  date: string;
+  weekday: string; // UTC weekday, generated server-side alongside the copy
+  block_from: number; // first block of the day; the range is the real window
+  block_height: number;
+  flow: ReportFlow;
+  baseline: ReportBaseline;
+  slow: SlowIndex[];
+  verdict: ReportVerdict;
+  closes_available: boolean; // false until on-chain close detection lands
+  coverage_note: string;
+  capacity: CapacityTrend | null; // null when fewer than two readings are held
+};

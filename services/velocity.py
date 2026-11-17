@@ -6,16 +6,23 @@ import db
 from models import LiquidityVelocity, VelocityHistoryEntry
 from services.mempool import get_lightning_stats, get_btc_price, get_historical_prices
 from services.growth_stats import get_lightning_growth_stats
+from services.capacity import get_latest_reading
 
 SATS_PER_BTC = 100_000_000
 
 
 async def get_liquidity_velocity() -> LiquidityVelocity:
-    stats, price = await asyncio.gather(get_lightning_stats(), get_btc_price())
+    price = await get_btc_price()
 
     latest_volume = get_lightning_growth_stats().monthly_volume[-1]
 
-    capacity_sats = stats.latest.total_capacity
+    # Our own node's reading; mempool only until the first one has been taken.
+    reading = get_latest_reading()
+    capacity_sats = (
+        reading.total_capacity
+        if reading is not None
+        else (await get_lightning_stats()).latest.total_capacity
+    )
     btc_price_usd = price.USD
     capacity_usd = (capacity_sats / SATS_PER_BTC) * btc_price_usd
     velocity = latest_volume.volume_usd / capacity_usd
@@ -30,20 +37,88 @@ async def get_liquidity_velocity() -> LiquidityVelocity:
     )
 
 
+def capacity_by_observed_day(docs: list[dict]) -> list[tuple[str, int]]:
+    """Collapse lightning_stats documents to one capacity per *observed* day.
+
+    Keyed on the upstream `added` date, not on when we fetched the row.
+    mempool.space serves `statistics/latest` from several cache nodes whose rows
+    can be months apart — measured median staleness is ~49 days, worst case 167 —
+    so our fetch time says nothing about which day a capacity figure describes.
+    Keying on `recorded_at` interleaved snapshots from different months and
+    produced a ~30% day-to-day oscillation that was pure cache artifact.
+
+    Returns ascending (YYYY-MM-DD, sats) pairs. Later fetches of the same `added`
+    day are treated as refinements and win.
+    """
+    by_added: dict[str, int] = {}
+    for doc in docs:
+        added = (doc.get("added") or "")[:10]
+        capacity = doc.get("total_capacity") or 0
+        if added and capacity > 0:
+            by_added[added] = capacity
+    return sorted(by_added.items())
+
+
+def merge_capacity(
+    mempool: list[tuple[str, int]], snapshots: list[tuple[str, int]]
+) -> list[tuple[str, int]]:
+    """One capacity series across the change of source.
+
+    `snapshots` is everything in capacity_snapshots: our own node's readings and the
+    imported history behind them, one per date, our node winning where both exist
+    (that is enforced by the one-per-date key, not here). Mempool is only the fallback
+    for dates before the first snapshot. Its points from there on are dropped, not
+    averaged: the methods disagree by a small constant step, and blending would smear
+    the seam.
+    """
+    if not snapshots:
+        return mempool
+    switchover = snapshots[0][0]
+    return [p for p in mempool if p[0] < switchover] + snapshots
+
+
+async def load_capacity_docs(database) -> dict[str, dict]:
+    """capacity_snapshots keyed by date, ascending, with the source and quality of each.
+
+    Source and quality are what let a caller refuse to compare two readings taken by
+    different methods, or to trust a day the import flagged as carried or interpolated.
+    """
+    readings = await database["capacity_snapshots"].find(
+        {}, {"_id": 0, "date": 1, "total_capacity": 1, "source": 1, "quality": 1},
+    ).sort("date", 1).to_list(length=None)
+    return {r["date"]: r for r in readings if r.get("total_capacity")}
+
+
+async def load_capacity_series(
+    database, docs: dict[str, dict] | None = None
+) -> list[tuple[str, int]]:
+    """Ascending (YYYY-MM-DD, sats): mempool only before the first snapshot, then the
+    snapshots (imported history, then our own node's readings). Pass `docs` from
+    load_capacity_docs to avoid reading the collection twice."""
+    stats = await database["lightning_stats"].find(
+        {}, {"_id": 0, "added": 1, "total_capacity": 1},
+    ).to_list(length=None)
+    if docs is None:
+        docs = await load_capacity_docs(database)
+    snapshots = [(d, r["total_capacity"]) for d, r in docs.items()]
+    return merge_capacity(capacity_by_observed_day(stats), snapshots)
+
+
 async def get_velocity_history(days: int) -> list[VelocityHistoryEntry] | None:
-    """Derive daily velocity from the lightning_stats capacity snapshots joined with
-    historical BTC prices, holding the latest monthly-volume estimate constant.
-    Returns None when MongoDB is not configured."""
+    """Derive velocity per observed day from the lightning_stats capacity snapshots
+    joined with historical BTC prices, holding the latest monthly-volume estimate
+    constant. Returns None when MongoDB is not configured.
+
+    `recorded_at` on each entry carries the **observation** date (upstream `added`),
+    not our fetch time — that is the date the capacity figure actually describes,
+    and the date its BTC price must be joined at.
+    """
     database = db.get_db()
     if database is None:
         return None
 
-    since = datetime.now(timezone.utc) - timedelta(days=days)
-    cursor = database["lightning_stats"].find(
-        {"recorded_at": {"$gte": since}},
-        {"_id": 0, "recorded_at": 1, "total_capacity": 1},
-    ).sort("recorded_at", 1)
-    docs = await cursor.to_list(length=None)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    observations = [(a, c) for a, c in await load_capacity_series(database) if a >= cutoff]
 
     prices = await get_historical_prices()
     pairs = sorted((p.time, p.USD) for p in prices)  # ascending for bisect
@@ -51,14 +126,9 @@ async def get_velocity_history(days: int) -> list[VelocityHistoryEntry] | None:
     volume_usd = get_lightning_growth_stats().monthly_volume[-1].volume_usd
 
     entries: list[VelocityHistoryEntry] = []
-    for doc in docs:
-        recorded_at: datetime = doc["recorded_at"]
-        if recorded_at.tzinfo is None:
-            recorded_at = recorded_at.replace(tzinfo=timezone.utc)
-        capacity_sats = doc.get("total_capacity") or 0
-        if capacity_sats <= 0:
-            continue
-        ts = recorded_at.timestamp()
+    for added, capacity_sats in observations:
+        observed_at = datetime.fromisoformat(added).replace(tzinfo=timezone.utc)
+        ts = observed_at.timestamp()
         idx = bisect.bisect_left(times, ts)
         candidates = [pairs[i] for i in (idx - 1, idx) if 0 <= i < len(pairs)]
         if not candidates:
@@ -68,7 +138,7 @@ async def get_velocity_history(days: int) -> list[VelocityHistoryEntry] | None:
         if capacity_usd <= 0:
             continue
         entries.append(VelocityHistoryEntry(
-            recorded_at=recorded_at.isoformat(),
+            recorded_at=observed_at.isoformat(),
             velocity=round(volume_usd / capacity_usd, 4),
             capacity_sats=capacity_sats,
             btc_price_usd=price_usd,

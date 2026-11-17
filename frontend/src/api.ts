@@ -69,3 +69,11 @@ export async function fetchNetworkMetricsHistory(days = 90) {
   if (!res.ok) throw new Error(`History unavailable (${res.status})`);
   return res.json();
 }
+
+// Daily report card. 503s when the database is unconfigured or no complete day
+// has been recorded yet — the card hides itself rather than erroring.
+export async function fetchDailyReport() {
+  const res = await fetch(`${BASE_URL}/report/daily`);
+  if (!res.ok) throw new Error(`Report unavailable (${res.status})`);
+  return res.json();
+}

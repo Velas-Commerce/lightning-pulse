@@ -948,13 +948,16 @@
   line-height: 1;
 }
 
-.info-tooltip-icon:hover {
+.info-tooltip-icon:hover,
+.info-tooltip-icon[aria-expanded="true"] {
   opacity: 1;
   color: var(--lightning);
 }
 
 .info-tooltip-box {
   width: 280px;
+  display: flex;
+  flex-direction: column;
   background: #080202;
   border: 1px solid rgba(180, 80, 0, 0.6);
   border-radius: 6px;
@@ -976,6 +979,22 @@
   margin: 0;
   padding: 0;
   border: none;
+}
+
+/* The box's own max-height is set inline from the room available; a longer tooltip
+   scrolls here, inside the box, so the arrow (which sits outside it) is never clipped. */
+.info-tooltip-scroll {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* A hovering preview ignores the pointer so it can never flicker under the mouse; a
+   pinned one is there to be read, so its text can be selected and scrolled. Declared
+   after the base rule above, which sets pointer-events: none, so that it wins. */
+.info-tooltip-box--pinned {
+  pointer-events: auto;
+  user-select: text;
+  cursor: text;
 }
 
 /* Arrow pointing up toward icon (tooltip is below the icon) */
@@ -1131,4 +1150,381 @@
   font-size: 0.7rem;
   color: var(--amber);
   font-variant-numeric: tabular-nums;
+}
+
+/* ── DAILY REPORT CARD ── */
+
+/* Sits above .dashboard-grid as its own row, matching the grid's gutter and the
+   1440px cap on #root. Deliberately not a grid child — see App.tsx. */
+.report-card-row {
+  margin-top: 1.5rem;
+  padding: 0 1.5rem;
+}
+
+.report-card {
+  /* Leads the page, so it should not trail the .card:nth-child fadeUp stagger */
+  animation-delay: 0s;
+}
+
+/* .card h2 is block by default; the flex header is scoped to .velocity-card */
+.report-card h2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rc-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Names the current panel; the dots alone cannot say which is which. */
+.rc-step-name {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Nav controls are double the size of the shared .vt-btn they build on. */
+.rc-nav .vt-btn {
+  font-size: 1.12rem;
+  padding: 0.3rem 1rem;
+}
+
+.rc-dots {
+  display: flex;
+  gap: 10px;
+}
+
+.rc-dot {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--separator);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.rc-dot:hover {
+  background: var(--amber);
+}
+
+.rc-dot--active {
+  background: var(--lightning);
+  box-shadow: 0 0 12px var(--lightning-glow);
+}
+
+.rc-headline {
+  font-size: clamp(1.15rem, 2.4vw, 1.75rem);
+  line-height: 1.25;
+  font-weight: 500;
+  color: var(--text);
+  margin: 0 0 0.5rem;
+  letter-spacing: -0.01em;
+}
+
+.rc-subline {
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--text-dim);
+  margin: 0;
+  max-width: 78ch;
+}
+
+/* Dividers are borders on the tiles, not the container's colour showing through a gap:
+   with five or seven tiles the last row is short, and the empty cells would otherwise
+   show that colour as a solid block. */
+.rc-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  border-top: 1px solid var(--separator);
+  border-left: 1px solid var(--separator);
+  margin: 1.5rem 0 0;
+}
+
+/* Beside the chart the column is narrow: three across, two rows */
+@media (min-width: 861px) {
+  .rc-verdict:not(.rc-verdict--solo) > .rc-figures {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* The Verdict slide: the summary on the left (stamp and headline, the capacity analysis,
+   the day's figures), the capacity chart in its own column on the right for the slide's
+   full height. A grid with named areas so the chart can span the three left-hand rows,
+   and so narrow screens can reorder (the chart drops between the analysis and the
+   figures) without the markup changing. */
+.rc-verdict {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 460px);
+  grid-template-rows: auto auto 1fr;
+  grid-template-areas:
+    "head  chart"
+    "cap   chart"
+    "tiles chart";
+  column-gap: 2rem;
+  margin-top: -0.5rem; /* the stamp used to tuck itself under the heading this way */
+}
+
+/* Without capacity there is nothing for a second column to hold. */
+.rc-verdict--solo {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto;
+  grid-template-areas:
+    "head"
+    "tiles";
+}
+
+.rc-verdict-head { grid-area: head; }
+.rc-verdict > .rc-capacity { grid-area: cap; }
+.rc-verdict > .rc-figures { grid-area: tiles; align-self: start; }
+.rc-verdict-chart { grid-area: chart; display: flex; flex-direction: column; min-width: 0; }
+.rc-verdict .rc-stamp { margin: 0 0 1rem; }
+
+@media (max-width: 860px) {
+  .rc-verdict {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      "head"
+      "cap"
+      "chart"
+      "tiles";
+  }
+  .rc-verdict-chart { margin-top: 1.25rem; }
+}
+
+/* Capacity against its trend, in words: a subheading and the analysis. */
+.rc-capacity {
+  margin: 1.5rem 0 0;
+}
+
+.rc-subheading {
+  margin: 0 0 0.9rem;
+  padding-bottom: 0.45rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--amber);
+  border-bottom: 1px solid var(--separator);
+}
+
+/* The chart panel: bordered, with its legend and readout above the plot. It fills its
+   column's height; the plot takes whatever the legend leaves, and never less than a
+   readable minimum. */
+.rc-chart {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--separator);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.015);
+  padding: 0.55rem 0.7rem 0.4rem;
+}
+
+/* The svg is positioned inside this box rather than sizing it, so the box's height comes
+   from the column and the chart cannot feed its own size back into the layout. */
+.rc-chart-plot {
+  position: relative;
+  flex: 1;
+  min-height: 210px;
+}
+
+.rc-chart-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.2rem 0.9rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.rc-chart-legend {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.9rem;
+}
+
+.rc-chart-readout {
+  font-variant-numeric: tabular-nums;
+}
+
+.rc-key {
+  display: inline-block;
+  width: 1.1rem;
+  height: 0;
+  margin-right: 0.35rem;
+  vertical-align: middle;
+  border-top: 2px solid var(--lightning);
+}
+
+.rc-key--pace {
+  border-top: 1.5px dashed var(--text-dim);
+}
+
+.rc-key--mark {
+  border-top: 1.5px dotted var(--amber);
+}
+
+.rc-figure {
+  background: var(--bg-card);
+  border-right: 1px solid var(--separator);
+  border-bottom: 1px solid var(--separator);
+  padding: 0.6rem 0.75rem;
+}
+
+.rc-figure-key {
+  display: block;
+  font-size: 0.55rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 0.25rem;
+}
+
+.rc-figure-value {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.rc-figure-value--up {
+  color: var(--lightning);
+  text-shadow: 0 0 12px var(--lightning-glow);
+}
+
+/* Closes and capacity leaving. Reuses the crimson end of the app's existing
+   bad->ok->good ramp (#aa0000 / #cc6600 / #f5c400) rather than a new colour. */
+.rc-figure-value--dn {
+  color: #cc6600;
+}
+
+.rc-figure-value--dim {
+  color: var(--text-dim);
+  opacity: 0.55;
+}
+
+.rc-figure-sub {
+  font-size: 0.6rem;
+  color: var(--text-dim);
+  opacity: 0.8;
+  margin-top: 0.1rem;
+}
+
+/* One slow index per step. Capped in width so the sparkline (which scales to its
+   container) stays a line rather than becoming a tall wedge on wide cards. */
+.rc-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 0 0.25rem;
+}
+
+/* Only the sparkline is width-capped; the analysis below it reads at full measure. */
+.rc-panel svg {
+  max-width: 460px;
+}
+
+.rc-panel-analysis {
+  margin-top: 0.4rem;
+}
+
+.rc-panel-value {
+  font-size: clamp(1.6rem, 3.2vw, 2.4rem);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  color: var(--lightning);
+  text-shadow: 0 0 14px var(--lightning-glow);
+}
+
+.rc-slow-label {
+  font-size: 0.55rem;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.rc-slow-caption {
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  opacity: 0.85;
+}
+
+.rc-slow-caption b {
+  color: var(--lightning);
+  font-weight: 600;
+}
+
+.rc-coverage {
+  margin: 1rem 0 0;
+  padding-left: 0.7rem;
+  border-left: 2px solid var(--separator);
+  font-size: 0.62rem;
+  line-height: 1.55;
+  color: var(--text-dim);
+  opacity: 0.75;
+}
+
+/* Bounded on desktop so the card cannot push the grid off the fold. Scoped to
+   the 6-column breakpoint rather than inventing a fifth responsive tier. */
+@media (min-width: 1281px) {
+  .report-card {
+    min-height: 360px;
+  }
+}
+
+@media (max-width: 640px) {
+  .report-card-row {
+    padding: 0 1rem;
+  }
+  /* The larger nav no longer fits beside the title on a phone */
+  .report-card h2 {
+    flex-wrap: wrap;
+  }
+  .rc-subline {
+    font-size: 0.76rem;
+  }
+}
+
+/* Weekday, UTC date, block range and the explicit 24h window — the card's time
+   reference. Stated in full because "night" would be wrong twice over: the window
+   is a UTC day, and Lightning is global. */
+.rc-stamp {
+  margin: -0.5rem 0 1rem;
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The one figure the headline turns on */
+.rc-hl {
+  color: var(--lightning);
+  text-shadow: 0 0 14px var(--lightning-glow);
+}
+
+@media (max-width: 640px) {
+  .rc-stamp {
+    font-size: 0.52rem;
+    letter-spacing: 0.07em;
+  }
 }

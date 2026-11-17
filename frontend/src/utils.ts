@@ -10,6 +10,16 @@ export function satsToBtc(sats: number): string {
   return btc.toFixed(4) + " BTC";
 }
 
+/** Round-number y-axis ticks within [vMin, vMax], aiming for ~4 intervals. */
+export function niceTicks(vMin: number, vMax: number): number[] {
+  const span = vMax - vMin;
+  const mag = Math.pow(10, Math.floor(Math.log10(span / 4)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => span / s <= 4) ?? 10 * mag;
+  const ticks: number[] = [];
+  for (let v = Math.ceil(vMin / step) * step; v <= vMax && ticks.length < 10; v += step) ticks.push(v);
+  return ticks;
+}
+
 export type TrendPoint = { t: number; v: number; ma: number };
 
 export const fmtDate = (t: number) => new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
